@@ -142,9 +142,242 @@ try:
 except Exception as e:
     print(f"❌ Error mounting static files: {e}")
 
+
+
 # ── CORS ─────────────────────────────────────────────────────────────────────
 app.add_middleware(
-    CORSMiddleware,
+    CORSMiddleware,# ============= REQUIRED ENDPOINTS FROM SCRIPT.JS =============
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint - called every 15 seconds"""
+    return {
+        "status": "healthy",
+        "gemini_configured": bool(genai.api_key),  # Check if Gemini is configured
+        "stored_alerts": len(S.alerts) if 'S' in globals() else 0
+    }
+
+@app.post("/generate")
+async def generate_alerts(request: GenerateRequest):
+    """Generate alerts - called when user clicks generate button"""
+    try:
+        # TODO: Implement your Gemini AI logic here
+        # This should return data.alerts matching what your frontend expects
+        
+        # Sample response structure:
+        sample_alerts = [
+            {
+                "timestamp": "2024-01-01T12:00:00Z",
+                "service": request.service or "api-gateway",
+                "type": request.alert_type or "latency",
+                "message": f"Sample {request.alert_type} alert",
+                "severity": "HIGH"
+            }
+        ]
+        
+        # Generate based on quantity
+        alerts = []
+        for i in range(request.quantity):
+            alerts.append({
+                "timestamp": "2024-01-01T12:00:00Z",
+                "service": request.service or f"service-{i}",
+                "type": request.alert_type or "error",
+                "message": f"Alert {i+1}",
+                "severity": ["CRITICAL", "HIGH", "MEDIUM"][i % 3]
+            })
+        
+        return {"alerts": alerts}
+        
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/simulate-incident")
+async def simulate_incident():
+    """Simulate incident - called when user clicks incident button"""
+    try:
+        # TODO: Implement incident simulation logic
+        sample_alerts = [
+            {
+                "timestamp": "2024-01-01T12:00:00Z",
+                "service": "database",
+                "type": "connection_failure",
+                "message": "Database connection failed",
+                "severity": "CRITICAL"
+            },
+            {
+                "timestamp": "2024-01-01T12:00:05Z",
+                "service": "api-gateway",
+                "type": "timeout",
+                "message": "API timeout due to DB failure",
+                "severity": "HIGH"
+            }
+        ]
+        
+        return {
+            "alerts": sample_alerts,
+            "chain_summary": ["DB_FAILURE", "API_TIMEOUT", "CASCADE"],
+            "count": len(sample_alerts)
+        }
+        
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/analyze")
+async def analyze_alerts(request: AnalyzeRequest):
+    """Analyze alerts - called when user clicks analyze button"""
+    try:
+        alerts = request.alerts
+        
+        # TODO: Implement your Gemini AI analysis logic here
+        
+        return {
+            "noise_removed": 5,
+            "filtered_alerts": len(alerts) - 5,
+            "total_alerts": len(alerts),
+            "ai_summary": "Analysis complete: System is stable with no major issues detected.",
+            "security_threats": [],  # Add threats if detected
+            "future_prediction": {
+                "prediction": "NOMINAL",
+                "confidence": "HIGH",
+                "message": "System expected to remain stable",
+                "eta": "24 hours",
+                "risk_factors": {
+                    "critical_alerts": 0,
+                    "high_alerts": 1,
+                    "affected_services": 2
+                }
+            },
+            "root_cause": {
+                "service": "database",
+                "confidence": "HIGH",
+                "affected": ["api-gateway", "auth-service"]
+            },
+            "cascade_chain": ["DB_LAG", "API_TIMEOUT", "USER_ERRORS"],
+            "top_alerts": [
+                {"service": "database", "type": "replication_delay", "severity": "HIGH", "score": 95},
+                {"service": "api", "type": "timeout", "severity": "MEDIUM", "score": 75}
+            ],
+            "clusters": [
+                {"service": "database", "type": "connection", "count": 5, "total_score": 85, "dominant_severity": "HIGH"}
+            ],
+            "priority_ranking": [
+                {"type": "DB_FAILURE", "severity": "CRITICAL", "score": 95, "reason": "Affects all services"},
+                {"type": "API_LATENCY", "severity": "HIGH", "score": 80, "reason": "User impact"}
+            ],
+            "recommendations": [
+                {"action": "Scale DB", "detail": "Increase database capacity", "urgency": "HIGH"},
+                {"action": "Restart API", "detail": "Restart API gateways", "urgency": "MEDIUM"}
+            ],
+            "severity_distribution": {
+                "CRITICAL": 1,
+                "HIGH": 3,
+                "MEDIUM": 5
+            },
+            "type_counts": {
+                "timeout": 3,
+                "error": 4,
+                "warning": 2
+            }
+        }
+        
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/stats")
+async def get_stats():
+    """Get statistics - called for drawer stats"""
+    try:
+        # TODO: Implement actual stats calculation
+        return {
+            "reduction_percent": 65,
+            "total_raw_alerts": 150,
+            "total_noise_removed": 98,
+            "total_clean_alerts": 52,
+            "by_severity": {
+                "CRITICAL": 5,
+                "HIGH": 15,
+                "MEDIUM": 32
+            },
+            "top_alert_types": {
+                "timeout": 25,
+                "connection_error": 18,
+                "latency": 12
+            },
+            "by_service": {
+                "database": 30,
+                "api-gateway": 25,
+                "auth": 15
+            }
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/history")
+async def get_history(limit: int = 20):
+    """Get analysis history"""
+    try:
+        # TODO: Implement actual history retrieval
+        return {
+            "analyses": [
+                {
+                    "id": 1,
+                    "root_cause": "database",
+                    "noise_removed": 5,
+                    "confidence": "HIGH"
+                },
+                {
+                    "id": 2,
+                    "root_cause": "network",
+                    "noise_removed": 3,
+                    "confidence": "MEDIUM"
+                }
+            ]
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/history/{analysis_id}")
+async def get_analysis(analysis_id: int):
+    """Get specific analysis by ID"""
+    try:
+        # TODO: Implement actual analysis retrieval
+        return {
+            "id": analysis_id,
+            "noise_removed": 5,
+            "filtered_alerts": 10,
+            "total_alerts": 15,
+            "ai_summary": f"Analysis #{analysis_id} complete",
+            "security_threats": [],
+            "future_prediction": {
+                "prediction": "NOMINAL",
+                "confidence": "HIGH",
+                "message": "System stable",
+                "eta": "24h"
+            },
+            "root_cause": {
+                "service": "database",
+                "confidence": "HIGH",
+                "affected": ["api"]
+            },
+            "cascade_chain": ["DB", "API"],
+            "severity_distribution": {"CRITICAL": 1, "HIGH": 2, "MEDIUM": 3}
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/clear-all")
+async def clear_all():
+    """Clear all history and alerts"""
+    try:
+        # TODO: Implement actual clear logic
+        # Clear your in-memory or database storage here
+        
+        return {
+            "status": "success",
+            "message": "All history cleared"
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
