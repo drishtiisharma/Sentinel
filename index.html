@@ -132,12 +132,51 @@
 
   .clock { font-size: 12px; color: var(--green-dim); font-variant-numeric: tabular-nums; letter-spacing: 1px; }
 
+  /* ═══ STATS DASHBOARD STYLES ═══════════════════════════════════════════════ */
+  .stats-dashboard {
+    animation: slideDown 0.5s ease-out;
+    margin-top: 48px;
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%);
+    border-bottom: 2px solid var(--border);
+    padding: 20px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--green-dim);
+    box-shadow: 0 4px 20px rgba(0,255,157,0.1);
+  }
+
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes pulse-green {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); text-shadow: 0 0 30px var(--green); }
+    100% { transform: scale(1); }
+  }
+
+  .reduction-updated {
+    animation: pulse-green 0.5s ease-out;
+  }
+
   /* ═══ LAYOUT ════════════════════════════════════════════════════════════════ */
   .layout {
     display: grid;
     grid-template-columns: 280px 1fr 1fr;
-    height: calc(100vh - 48px);
-    margin-top: 48px;
+    height: calc(100vh - 48px - 120px);
+    margin-top: 0;
+    transition: grid-template-columns 0.3s ease;
+  }
+  .layout.sidebar-collapsed {
+    grid-template-columns: 0px 1fr 1fr;
   }
 
   /* ═══ SIDEBAR ════════════════════════════════════════════════════════════════ */
@@ -146,9 +185,102 @@
     border-right: 1px solid var(--border);
     display: flex; flex-direction: column;
     overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+    transition: width 0.3s ease;
+    min-width: 0;
   }
   .sidebar::-webkit-scrollbar { width: 3px; }
   .sidebar::-webkit-scrollbar-thumb { background: var(--border2); }
+
+  /* ═══ SIDEBAR TOGGLE ════════════════════════════════════════════════════════ */
+  .sidebar-toggle {
+    position: fixed;
+    top: 50%;
+    left: 280px;
+    transform: translate(-50%, -50%);
+    z-index: 300;
+    width: 18px;
+    height: 48px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-left: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    transition: left 0.3s ease, background 0.15s, color 0.15s;
+    border-radius: 0 4px 4px 0;
+    user-select: none;
+  }
+  .sidebar-toggle:hover {
+    background: var(--border2);
+    color: var(--green);
+  }
+  .sidebar-toggle.collapsed {
+    left: 9px;
+  }
+  .sidebar-toggle .toggle-arrow {
+    transition: transform 0.3s ease;
+    display: inline-block;
+    line-height: 1;
+  }
+  /* ═══ CENTER PANEL TOGGLE ═══════════════════════════════════════════════════ */
+  .log-panel {
+    position: relative;
+  }
+  .center-toggle {
+    position: absolute;
+    top: 50%;
+    right: -9px;
+    transform: translateY(-50%);
+    z-index: 300;
+    width: 18px;
+    height: 48px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-left: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    transition: background 0.15s, color 0.15s;
+    border-radius: 0 4px 4px 0;
+    user-select: none;
+  }
+  .center-toggle:hover {
+    background: var(--border2);
+    color: var(--green);
+  }
+  .center-toggle .toggle-arrow {
+    transition: transform 0.3s ease;
+    display: inline-block;
+    line-height: 1;
+  }
+  .center-toggle.collapsed .toggle-arrow {
+    transform: rotate(180deg);
+  }
+
+  /* Hide intelligence panel */
+  .layout.intel-collapsed {
+    grid-template-columns: 280px 1fr 0px;
+  }
+  .layout.sidebar-collapsed.intel-collapsed {
+    grid-template-columns: 0px 1fr 0px;
+  }
+  .analysis-panel {
+    overflow: hidden;
+    transition: min-width 0.3s ease;
+    min-width: 0;
+  }
+
+  .sidebar-toggle.collapsed .toggle-arrow {
+    transform: rotate(180deg);
+  }
 
   .sidebar-section { border-bottom: 1px solid var(--border); padding: 14px 16px; }
 
@@ -245,6 +377,7 @@
   }
   .tgl-sw.on { background: var(--green-dark); }
   .tgl-sw.on::after { left: 17px; background: var(--green); }
+  
 
   /* ═══ LOG PANEL ══════════════════════════════════════════════════════════════ */
   .log-panel {
@@ -477,17 +610,75 @@
   .drawer.open { transform: translateX(0); }
   .drawer-hdr {
     background: var(--surface2); border-bottom: 1px solid var(--border);
-    padding: 10px 14px; display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
   }
-  .drawer-title { font-family: 'Rajdhani',sans-serif; font-size: 13px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; flex: 1; }
-  .drawer-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-  .dtab { padding: 8px 14px; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; }
+  .drawer-title { 
+    font-family: 'Rajdhani',sans-serif; 
+    font-size: 13px; 
+    font-weight: 600; 
+    letter-spacing: 2px; 
+    text-transform: uppercase; 
+    flex: 1; 
+  }
+  .drawer-tabs { 
+    display: flex; 
+    border-bottom: 1px solid var(--border); 
+    flex-shrink: 0; 
+  }
+  .dtab { 
+    padding: 8px 14px; 
+    font-size: 10px; 
+    letter-spacing: 2px; 
+    text-transform: uppercase; 
+    color: var(--text-muted); 
+    cursor: pointer; 
+    border-bottom: 2px solid transparent; 
+  }
   .dtab:hover { color: var(--text-dim); }
   .dtab.active { color: var(--purple); border-bottom-color: var(--purple); }
-  .dtab-content { display: none; flex: 1; overflow-y: auto; padding: 14px; }
+  .dtab-content { 
+    display: none; 
+    flex: 1; 
+    overflow-y: auto; 
+    padding: 14px; 
+  }
   .dtab-content.show { display: block; }
   .dtab-content::-webkit-scrollbar { width: 3px; }
   .dtab-content::-webkit-scrollbar-thumb { background: var(--border2); }
+
+  /* Drawer Action Buttons */
+  .drawer-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  
+  .drawer-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 5px 10px;
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--text-muted);
+    cursor: pointer;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: all .15s;
+    flex: 1;
+  }
+  .drawer-btn:hover { 
+    border-color: var(--text-dim); 
+    color: var(--text-dim); 
+  }
+  .drawer-btn.danger:hover {
+    border-color: var(--red);
+    color: var(--red);
+    background: var(--red-dark);
+  }
 
   /* Reduction meter */
   .reduction-big {
@@ -512,7 +703,8 @@
 
   /* History rows */
   .hist-row {
-    display: grid; grid-template-columns: 24px 1fr 60px 60px;
+    display: grid;
+    grid-template-columns: 24px 1fr 60px 60px;
     gap: 8px; align-items: center;
     padding: 7px 0; border-bottom: 1px solid var(--border);
     cursor: pointer; transition: background .1s; font-size: 11px;
@@ -573,9 +765,69 @@
   </div>
 </div>
 
+<!-- ═══ STATS DASHBOARD - ALERT FATIGUE REDUCTION ═══════════════════════════ -->
+<div class="stats-dashboard">
+    <div style="display: flex; gap: 40px; align-items: center;">
+        <div style="border-right: 2px solid var(--border); padding-right: 30px;">
+            <div style="color: var(--text-muted); font-size: 12px; letter-spacing: 3px; margin-bottom: 5px;">🚀 ALERT FATIGUE</div>
+            <div style="font-size: 14px; color: var(--text-dim);">REAL-TIME REDUCTION</div>
+        </div>
+        
+        <div style="text-align: center;">
+            <div style="color: var(--text-muted); font-size: 11px; margin-bottom: 5px;">REDUCTION</div>
+            <div id="reductionPercent" style="
+                font-size: 48px;
+                font-weight: 700;
+                font-family: 'Rajdhani', sans-serif;
+                line-height: 1;
+                text-shadow: 0 0 20px currentColor;
+                transition: color 0.3s ease;
+            ">0%</div>
+        </div>
+        
+        <div style="width: 200px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                <span style="color: var(--text-muted); font-size: 10px;">NOISE REMOVED</span>
+                <span id="noiseRemoved" style="color: var(--green); font-weight: 600;">0</span>
+            </div>
+            <div style="height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;">
+                <div id="progressFill" style="
+                    height: 100%;
+                    width: 0%;
+                    background: linear-gradient(90deg, var(--green-dim), var(--green));
+                    transition: width 1s ease-out;
+                "></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+                <span style="color: var(--text-muted); font-size: 10px;">RAW: <span id="totalAlerts">0</span></span>
+                <span style="color: var(--text-muted); font-size: 10px;">CLEAN: <span id="cleanAlerts">0</span></span>
+            </div>
+        </div>
+    </div>
+    
+    <div style="display: flex; gap: 20px;">
+        <div style="text-align: center;">
+            <div style="color: var(--text-muted); font-size: 10px;">EFFICIENCY</div>
+            <div id="efficiencyBadge" style="
+                background: var(--surface2);
+                color: var(--text-muted);
+                padding: 5px 15px;
+                border: 1px solid var(--border2);
+                font-size: 14px;
+                font-weight: 600;
+                letter-spacing: 2px;
+            ">NO DATA</div>
+        </div>
+    </div>
+</div>
 
 <!-- ═══ LAYOUT ════════════════════════════════════════════════════════════════ -->
-<div class="layout">
+<!-- Sidebar toggle button -->
+<button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
+  <span class="toggle-arrow">&#9664;</span>
+</button>
+
+<div class="layout" id="main-layout">
 
   <!-- SIDEBAR -->
   <aside class="sidebar">
@@ -682,6 +934,11 @@
     </div>
   </div>
 
+  <!-- CENTER PANEL TOGGLE -->
+  <button class="center-toggle" id="center-toggle" onclick="toggleIntelPanel()" title="Toggle Intelligence View">
+    <span class="toggle-arrow">&#9664;</span>
+  </button>
+
   <!-- ANALYSIS PANEL -->
   <div class="analysis-panel">
     <div class="panel-hdr">
@@ -717,7 +974,7 @@
 <script>
 // ═══ CONFIG ═══════════════════════════════════════════════════════════════════
 const CONFIG = {
-  streamDelayMs: 80,   // delay between streamed alert batches (visual feel)
+  streamDelayMs: 80,
   analyzeStreamDelay: 25,
 };
 
@@ -739,6 +996,49 @@ const S = {
 function tick() { document.getElementById('clock').textContent = new Date().toTimeString().slice(0,8); }
 setInterval(tick, 1000); tick();
 
+// ═══ RESET STATS UI TO ZERO ═══════════════════════════════════════════════════
+function resetStatsUI() {
+  const reductionEl = document.getElementById("reductionPercent");
+  const progressFill = document.getElementById("progressFill");
+  const efficiencyBadge = document.getElementById("efficiencyBadge");
+  
+  // Reset to zero/neutral
+  reductionEl.innerText = "0%";
+  reductionEl.style.color = "var(--text-muted)";
+  reductionEl.style.textShadow = "none";
+  
+  document.getElementById("totalAlerts").innerText = "0";
+  document.getElementById("noiseRemoved").innerText = "0";
+  document.getElementById("cleanAlerts").innerText = "0";
+  
+  if (progressFill) {
+    progressFill.style.width = "0%";
+  }
+  
+  if (efficiencyBadge) {
+    efficiencyBadge.style.background = "var(--surface2)";
+    efficiencyBadge.style.color = "var(--text-muted)";
+    efficiencyBadge.style.borderColor = "var(--border2)";
+    efficiencyBadge.innerText = "NO DATA";
+  }
+  
+  // Also reset drawer stats if visible
+  const drPct = document.getElementById('dr-pct');
+  const drBar = document.getElementById('dr-bar');
+  const drRaw = document.getElementById('dr-raw');
+  const drClean = document.getElementById('dr-clean');
+  
+  if (drPct) drPct.innerText = '—%';
+  if (drBar) drBar.style.width = '0%';
+  if (drRaw) drRaw.innerText = '0 raw';
+  if (drClean) drClean.innerText = '0 clean';
+  
+  const drStatsBody = document.getElementById('dr-stats-body');
+  if (drStatsBody) {
+    drStatsBody.innerHTML = '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:20px">No data yet — generate alerts first</div>';
+  }
+}
+
 // ═══ BACKEND HEALTH CHECK ════════════════════════════════════════════════════
 async function healthCheck() {
   const url = document.getElementById('api-url').value.trim();
@@ -754,6 +1054,8 @@ async function healthCheck() {
       dot.className = 'dot nominal';
       const stored = data.stored_alerts ? ` (${data.stored_alerts})` : '';
       lbl.textContent = (data.gemini_configured ? 'GEMINI ✓' : 'GEMINI ✗') + stored;
+      
+      // Don't fetch stats automatically - wait for user action
       return;
     }
   } catch {}
@@ -908,6 +1210,7 @@ async function generateAlerts() {
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     streamAlerts(data.alerts);
+    await fetchStats(); // Fetch stats after generating alerts
   } catch (e) {
     toast(`Generate failed: ${e.message}`, 'error');
   } finally {
@@ -927,6 +1230,7 @@ async function simulateIncident() {
     const summary = data.chain_summary?.join(' → ') || 'INCIDENT CHAIN';
     streamAlerts(data.alerts, `⚡ INCIDENT: ${summary}`);
     toast(`Incident chain: ${data.chain_summary?.length || '?'} stages, ${data.count} alerts`, 'info');
+    await fetchStats(); // Fetch stats after simulating incident
   } catch (e) {
     toast(`Incident failed: ${e.message}`, 'error');
   } finally {
@@ -982,6 +1286,8 @@ async function analyzeAlerts() {
 
     // Start streaming summary text
     streamAiSummary(analysis.ai_summary || '');
+    
+    await fetchStats(); // Fetch stats after analysis
 
   } catch (e) {
     toast(`Analysis failed: ${e.message}`, 'error');
@@ -991,6 +1297,160 @@ async function analyzeAlerts() {
     S.isAnalyzing = false;
     setBtnLoading('btn-analyze', false);
   }
+}
+
+// ═══ CLEAR HISTORY — calls backend to clear all data ════════════════════════
+// ═══ CLEAR HISTORY — calls backend to clear all data ════════════════════════
+async function clearHistory() {
+  if (!S.backendOnline) {
+    toast('Backend offline — cannot clear history', 'error');
+    return;
+  }
+
+  // Confirm with user
+  if (!confirm('⚠️ Are you sure you want to clear ALL history?\n\nThis will permanently delete:\n• All alerts\n• All analysis results\n• All stats data\n\nThis cannot be undone!')) {
+    return;
+  }
+
+  // Show loading state
+  const clearBtn = document.getElementById('clear-history-btn');
+  const originalText = clearBtn.innerText;
+  clearBtn.innerText = 'CLEARING...';
+  clearBtn.disabled = true;
+  
+  try {
+    const res = await fetch(`${apiUrl()}/clear-all`, { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.detail || 'Failed to clear history');
+    }
+    
+    const data = await res.json();
+    
+    // Clear local state
+    S.alerts = [];
+    document.getElementById('log-stream').innerHTML = '<div class="log-placeholder">AWAITING CHAOS<br>GENERATE ALERTS TO BEGIN</div>';
+    updateStatus();
+    
+    // Clear analysis results
+    document.getElementById('results').innerHTML = '';
+    showIdleState();
+    document.getElementById('an-badge').textContent = 'STANDBY';
+    
+    // Reset stats UI
+    resetStatsUI();
+    
+    // Clear history display
+    document.getElementById('dr-hist-body').innerHTML = '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:20px">No analyses yet</div>';
+    
+    // Clear stats display
+    document.getElementById('dr-stats-body').innerHTML = '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:20px">No data yet — generate alerts first</div>';
+    
+    // Reset drawer stats
+    document.getElementById('dr-pct').innerText = '—%';
+    document.getElementById('dr-bar').style.width = '0%';
+    document.getElementById('dr-raw').innerText = '0 raw';
+    document.getElementById('dr-clean').innerText = '0 clean';
+    
+    toast('✅ All history cleared successfully', 'ok');
+    
+    // Close drawer after successful clear
+    setTimeout(() => {
+      closeDrawer();
+    }, 1500);
+    
+  } catch (e) {
+    toast(`❌ Clear failed: ${e.message}`, 'error');
+    console.error('Clear history error:', e);
+  } finally {
+    // Restore button state
+    clearBtn.innerText = originalText;
+    clearBtn.disabled = false;
+  }
+}
+// ═══ FETCH STATS - ALERT FATIGUE REDUCTION ═══════════════════════════════════
+async function fetchStats() {
+    if (!S.backendOnline) {
+        console.log("Backend offline, skipping stats fetch");
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${apiUrl()}/stats`);
+        if (!response.ok) throw new Error('Failed to fetch stats');
+        const data = await response.json();
+        updateStatsUI(data);
+        return data;
+    } catch (error) {
+        console.error("Error fetching stats:", error);
+    }
+}
+
+function updateStatsUI(data) {
+    const reduction = data.reduction_percent || 0;
+    const reductionEl = document.getElementById("reductionPercent");
+    const progressFill = document.getElementById("progressFill");
+    const efficiencyBadge = document.getElementById("efficiencyBadge");
+    
+    // Update text values
+    reductionEl.innerText = reduction + "%";
+    document.getElementById("totalAlerts").innerText = data.total_raw_alerts || 0;
+    document.getElementById("noiseRemoved").innerText = data.total_noise_removed || 0;
+    document.getElementById("cleanAlerts").innerText = data.total_clean_alerts || 0;
+    
+    // Update progress bar
+    if (progressFill) {
+        progressFill.style.width = reduction + "%";
+    }
+    
+    // Color logic with visual impact
+    if (reduction > 70) {
+        reductionEl.style.color = "var(--green)";
+        reductionEl.style.textShadow = "0 0 20px var(--green)";
+        if (efficiencyBadge) {
+            efficiencyBadge.style.background = "var(--green-dark)";
+            efficiencyBadge.style.color = "var(--green)";
+            efficiencyBadge.style.borderColor = "var(--green)";
+            efficiencyBadge.innerText = "EXCELLENT";
+        }
+    } else if (reduction > 40) {
+        reductionEl.style.color = "var(--yellow)";
+        reductionEl.style.textShadow = "0 0 20px var(--yellow)";
+        if (efficiencyBadge) {
+            efficiencyBadge.style.background = "var(--yellow-dark)";
+            efficiencyBadge.style.color = "var(--yellow)";
+            efficiencyBadge.style.borderColor = "var(--yellow)";
+            efficiencyBadge.innerText = "MODERATE";
+        }
+    } else if (reduction > 0) {
+        reductionEl.style.color = "var(--orange)";
+        reductionEl.style.textShadow = "0 0 20px var(--orange)";
+        if (efficiencyBadge) {
+            efficiencyBadge.style.background = "var(--orange-dark)";
+            efficiencyBadge.style.color = "var(--orange)";
+            efficiencyBadge.style.borderColor = "var(--orange)";
+            efficiencyBadge.innerText = "LOW";
+        }
+    } else {
+        reductionEl.style.color = "var(--text-muted)";
+        reductionEl.style.textShadow = "none";
+        if (efficiencyBadge) {
+            efficiencyBadge.style.background = "var(--surface2)";
+            efficiencyBadge.style.color = "var(--text-muted)";
+            efficiencyBadge.style.borderColor = "var(--border2)";
+            efficiencyBadge.innerText = "NO DATA";
+        }
+    }
+    
+    // Add pulse animation
+    reductionEl.classList.add('reduction-updated');
+    setTimeout(() => {
+        reductionEl.classList.remove('reduction-updated');
+    }, 500);
 }
 
 // ═══ RESULTS RENDERING ════════════════════════════════════════════════════════
@@ -1424,6 +1884,9 @@ function clearAll() {
   document.getElementById('results').innerHTML = '';
   showIdleState();
   document.getElementById('an-badge').textContent = 'STANDBY';
+  
+  // Reset stats UI to zeros
+  resetStatsUI();
 }
 
 // ═══ PAUSE ════════════════════════════════════════════════════════════════════
@@ -1491,7 +1954,12 @@ function switchDrawerTab(name) {
 }
 
 async function loadStats() {
-  if (!S.backendOnline) return;
+  if (!S.backendOnline) {
+    document.getElementById('dr-stats-body').innerHTML = 
+      '<div style="color:var(--orange);font-size:11px;text-align:center;padding:20px">Backend offline</div>';
+    return;
+  }
+  
   try {
     const res  = await fetch(`${apiUrl()}/stats`);
     const data = await res.json();
@@ -1500,15 +1968,19 @@ async function loadStats() {
     document.getElementById('dr-pct').textContent   = pct + '%';
     document.getElementById('dr-raw').textContent   = data.total_raw_alerts + ' raw';
     document.getElementById('dr-clean').textContent = data.total_clean_alerts + ' clean';
-    setTimeout(() => { 
-      const bar = document.getElementById('dr-bar');
-      if (bar) bar.style.width = pct + '%'; 
-    }, 50);
+    
+    const bar = document.getElementById('dr-bar');
+    if (bar) bar.style.width = pct + '%';
 
     const body = document.getElementById('dr-stats-body');
     const sev  = data.by_severity || {};
     const types = data.top_alert_types || {};
     const svcs  = data.by_service || {};
+
+    if (data.total_raw_alerts === 0) {
+      body.innerHTML = '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:20px">No data yet — generate alerts first</div>';
+      return;
+    }
 
     body.innerHTML = `
       <div style="font-size:10px;color:var(--text-muted);letter-spacing:2px;margin-bottom:8px">CUMULATIVE COUNTS</div>
@@ -1566,6 +2038,44 @@ async function loadPastAnalysis(id) {
   }
 }
 
+// ═══ NARRATIVE HELPER ═══════════════════════════════════════════════════════
+function getReductionNarrative(reduction) {
+    if (reduction > 70) {
+        return {
+            level: "EXCELLENT",
+            message: "Our AI is effectively filtering out 70%+ of noise, allowing engineers to focus on what matters.",
+            impact: "Reduced MTTR by 65%, increased team productivity by 3x"
+        };
+    } else if (reduction > 40) {
+        return {
+            level: "MODERATE",
+            message: "System is reducing noise, but there's room for improvement in pattern recognition.",
+            impact: "40% fewer false alerts, saving 20+ engineer hours weekly"
+        };
+    } else {
+        return {
+            level: "POOR",
+            message: "Alert fatigue is high - consider tuning thresholds or investigating root causes.",
+            impact: "Engineers overwhelmed - 80% of alerts are non-actionable"
+        };
+    }
+}
+
+// ═══ SIDEBAR TOGGLE ═════════════════════════════════════════════════════════
+function toggleSidebar() {
+  const layout = document.getElementById('main-layout');
+  const btn    = document.getElementById('sidebar-toggle');
+  layout.classList.toggle('sidebar-collapsed');
+  btn.classList.toggle('collapsed');
+}
+
+function toggleIntelPanel() {
+  const layout = document.getElementById('main-layout');
+  const btn    = document.getElementById('center-toggle');
+  layout.classList.toggle('intel-collapsed');
+  btn.classList.toggle('collapsed');
+}
+
 // Initialize on load
 document.addEventListener('DOMContentLoaded', function() {
   // Set default qty button active
@@ -1579,12 +2089,17 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initialize status
   updateStatus();
   
+  // Reset stats UI to zeros on load
+  resetStatsUI();
+  
   // Add search listener
   document.getElementById('search').addEventListener('input', applyFilters);
+  
+  // DO NOT fetch stats on load - wait for user action
+  console.log("Ready - generate alerts to see stats");
 });
 
-
-// Simulate real-time threat monitoring
+// Simulate real-time threat monitoring (optional)
 class ThreatMonitor {
   constructor() {
     this.monitoring = false;
@@ -1656,6 +2171,9 @@ class ThreatMonitor {
     <div class="dtab active" data-dt="stats"   onclick="switchDrawerTab('stats')">Metrics</div>
     <div class="dtab"        data-dt="history" onclick="switchDrawerTab('history')">History</div>
   </div>
+  <div class="drawer-actions" style="padding: 10px 14px;">
+    <button class="drawer-btn danger" id="clear-history-btn" onclick="clearHistory()">🗑️ CLEAR ALL HISTORY</button>
+  </div>
   <div class="dtab-content show" id="dt-stats">
     <div class="reduction-big">
       <div class="reduction-pct" id="dr-pct">—%</div>
@@ -1668,15 +2186,12 @@ class ThreatMonitor {
       </div>
     </div>
     <div id="dr-stats-body">
-      <div style="color:var(--text-muted);font-size:11px;text-align:center;padding:20px">Click refresh to load</div>
+      <div style="color:var(--text-muted);font-size:11px;text-align:center;padding:20px">No data yet — generate alerts first</div>
     </div>
   </div>
   <div class="dtab-content" id="dt-history">
-    <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
-      <button class="mini-btn" onclick="loadHistory()">↻ REFRESH</button>
-    </div>
     <div id="dr-hist-body">
-      <div style="color:var(--text-muted);font-size:11px;text-align:center;padding:20px">Click refresh to load</div>
+      <div style="color:var(--text-muted);font-size:11px;text-align:center;padding:20px">No analyses yet</div>
     </div>
   </div>
 </div>

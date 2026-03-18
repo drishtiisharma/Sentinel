@@ -1119,6 +1119,25 @@ def get_analysis(analysis_id: int):
         raise HTTPException(404, "Analysis not found")
     return json.loads(row["payload"])
 
+@app.post("/clear-all")
+def clear_all():
+    """Clear all alerts and analyses from the database."""
+    try:
+        # Delete all alerts
+        _db.execute("DELETE FROM alerts")
+        # Delete all analyses
+        _db.execute("DELETE FROM analyses")
+        # Reset SQLite auto-increment counters
+        _db.execute("DELETE FROM sqlite_sequence WHERE name='alerts'")
+        _db.execute("DELETE FROM sqlite_sequence WHERE name='analyses'")
+        _db.commit()
+        
+        return {
+            "status": "success",
+            "message": "All data cleared successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear data: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
