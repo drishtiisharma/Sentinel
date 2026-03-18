@@ -3,24 +3,29 @@ SENTINEL AIOps Backend
 ======================
 FastAPI + Google Gemini for intelligent alert analysis with security threat detection.
 """
-from pathlib import Path
-from fastapi.staticfiles import StaticFiles
-import google.generativeai as genai
+# Standard library
 import os
-import random
+import sys
+import json
 import uuid
+import random
+import re
+import asyncio
+import sqlite3
+import traceback
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
+from collections import defaultdict
 from typing import Optional, List, Dict, Any
+
+# Third-party
+import google.generativeai as genai
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import json
-import asyncio
-from dotenv import load_dotenv
-from collections import defaultdict
-import sqlite3
-import re
 
 load_dotenv()
 
