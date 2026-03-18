@@ -69,12 +69,8 @@ app = FastAPI(title="SENTINEL AIOps API", version="1.0.0")
 
 
 @app.get("/")
-def home():
-    return {
-        "system": "SENTINEL AIOps",
-        "status": "active",
-        "message": "Alert intelligence system running"
-    }
+def serve_frontend():
+    return FileResponse("index.html")
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
 app.add_middleware(
