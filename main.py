@@ -66,11 +66,13 @@ def _store_analysis(total: int, noise: int, clean: int, root: str, conf: str, pa
     _db.commit()
 
 app = FastAPI(title="SENTINEL AIOps API", version="1.0.0")
+# Serve static files
+app.mount("/static", StaticFiles(directory="."), name="static")
 
 @app.get("/")
 def serve_frontend():
-    file_path = os.path.join(os.path.dirname(__file__), "index.html")
-    return FileResponse(file_path)
+    print("FILES:", os.listdir())
+    return FileResponse("index.html")
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
 app.add_middleware(
