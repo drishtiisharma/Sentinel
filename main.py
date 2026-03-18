@@ -67,12 +67,15 @@ def _store_analysis(total: int, noise: int, clean: int, root: str, conf: str, pa
     _db.commit()
 
 app = FastAPI(title="SENTINEL AIOps API", version="1.0.0")
-# Serve static files
-app.mount("/static", StaticFiles(directory="."), name="static")
 
 @app.get("/")
 def serve_frontend():
-    print("FILES:", os.listdir())
+    files = os.listdir()
+    print("FILES IN DIR:", files)
+
+    if "index.html" not in files:
+        return {"error": "index.html NOT FOUND", "files": files}
+
     return FileResponse("index.html")
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
