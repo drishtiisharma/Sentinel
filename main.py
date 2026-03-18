@@ -1,13 +1,13 @@
 """
 SENTINEL AIOps Backend
 ======================
-FastAPI + Google Gemini for intelligent alert analysis.
+FastAPI + Google Gemini for intelligent alert analysis with security threat detection.
 """
 import google.generativeai as genai
 import os
 import random
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,8 +17,53 @@ import json
 import asyncio
 from dotenv import load_dotenv
 from collections import defaultdict
+import sqlite3
+import re
 
 load_dotenv()
+
+# ── SQLite persistence ────────────────────────────────────────────────────────
+_db = sqlite3.connect("sentinel.db", check_same_thread=False)
+_db.row_factory = sqlite3.Row
+_db.executescript("""
+CREATE TABLE IF NOT EXISTS alerts (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    alert_id  TEXT NOT NULL,
+    service   TEXT NOT NULL,
+    type      TEXT NOT NULL,
+    severity  TEXT NOT NULL,
+    message   TEXT,
+    timestamp TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS analyses (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at   TEXT NOT NULL,
+    total_alerts INTEGER NOT NULL,
+    noise_removed INTEGER NOT NULL,
+    clean_alerts INTEGER NOT NULL,
+    root_cause   TEXT,
+    confidence   TEXT,
+    payload      TEXT NOT NULL
+);
+""")
+_db.commit()
+
+def _store_alerts(alerts: list):
+    _db.executemany(
+        "INSERT INTO alerts (alert_id,service,type,severity,message,timestamp) VALUES (?,?,?,?,?,?)",
+        [(a.get("id",""), a.get("service",""), a.get("type",""),
+          a.get("severity","MEDIUM"), a.get("message",""), a.get("timestamp",""))
+         for a in alerts]
+    )
+    _db.commit()
+
+def _store_analysis(total: int, noise: int, clean: int, root: str, conf: str, payload: dict):
+    import json as _json
+    _db.execute(
+        "INSERT INTO analyses (created_at,total_alerts,noise_removed,clean_alerts,root_cause,confidence,payload) VALUES (?,?,?,?,?,?,?)",
+        (datetime.now(timezone.utc).isoformat(), total, noise, clean, root, conf, _json.dumps(payload))
+    )
+    _db.commit()
 
 app = FastAPI(title="SENTINEL AIOps API", version="1.0.0")
 
@@ -133,6 +178,286 @@ INCIDENT_CHAINS = [
         {"type": "Memory Leak",       "service": "Frontend",    "severity": "HIGH"},
     ],
 ]
+
+# ── Security Patterns ────────────────────────────────────────────────────────
+SECURITY_PATTERNS = {
+    "brute_force": {
+        "patterns": [
+            r"invalid credentials.*\d+",
+            r"failed login.*\d+",
+            r"auth.*failed.*\d+",
+            r"rate limit.*breach",
+            r"jwt.*invalid",
+        ],
+        "services": ["Auth Service", "API Gateway"],
+        "alert_types": ["Auth Failure", "API Timeout"],
+        "threshold": 3,
+        "severity": "HIGH"
+    },
+    "ddos_attempt": {
+        "patterns": [
+            r"packet loss.*\d+%",
+            r"bandwidth.*saturation",
+            r"arp flood",
+            r"connection refused.*\d+",
+            r"syn flood",
+        ],
+        "services": ["API Gateway", "Network"],
+        "alert_types": ["Network Spike", "API Timeout"],
+        "threshold": 2,
+        "severity": "CRITICAL"
+    },
+    "data_exfiltration": {
+        "patterns": [
+            r"disk full.*rapid",
+            r"unusual.*outbound",
+            r"large.*response",
+            r"memory.*spike.*unusual",
+        ],
+        "services": ["Database", "Backend", "Cache"],
+        "alert_types": ["Disk Full", "Memory Leak"],
+        "threshold": 2,
+        "severity": "CRITICAL"
+    },
+    "privilege_escalation": {
+        "patterns": [
+            r"permission.*denied",
+            r"unauthorized.*access",
+            r"privilege.*escalation",
+            r"sudo.*failure",
+        ],
+        "services": ["Auth Service", "Backend"],
+        "alert_types": ["Auth Failure"],
+        "threshold": 2,
+        "severity": "HIGH"
+    },
+    "service_disruption": {
+        "patterns": [
+            r"circuit breaker.*open",
+            r"health check.*failing",
+            r"deadlock",
+            r"connection pool.*exhausted",
+        ],
+        "services": ["Database", "API Gateway", "Backend"],
+        "alert_types": ["Database Failure", "API Timeout"],
+        "threshold": 1,
+        "severity": "CRITICAL"
+    }
+}
+
+# ── Threat Predictor Class ───────────────────────────────────────────────────
+class ThreatPredictor:
+    def __init__(self):
+        self.attack_patterns = defaultdict(int)
+        self.service_health = defaultdict(lambda: {"failures": 0, "last_failure": None})
+        self.anomaly_scores = defaultdict(float)
+    
+    def analyze_threats(self, alerts):
+        """Analyze alerts for security threats and predict attacks"""
+        threats = []
+        attack_signatures = defaultdict(list)
+        
+        # Group alerts by potential attack signatures
+        for alert in alerts:
+            # Check each security pattern
+            for threat_name, config in SECURITY_PATTERNS.items():
+                # Check if alert matches pattern
+                if alert["service"] in config["services"] and alert["type"] in config["alert_types"]:
+                    # Check message patterns
+                    message = alert.get("message", "").lower()
+                    for pattern in config["patterns"]:
+                        if re.search(pattern, message, re.IGNORECASE):
+                            attack_signatures[threat_name].append(alert)
+                            self.attack_patterns[threat_name] += 1
+                            break
+        
+        # Evaluate threats
+        for threat_name, matching_alerts in attack_signatures.items():
+            config = SECURITY_PATTERNS[threat_name]
+            if len(matching_alerts) >= config["threshold"]:
+                threat_level = self._assess_threat_level(threat_name, matching_alerts)
+                
+                threats.append({
+                    "type": threat_name,
+                    "confidence": threat_level["confidence"],
+                    "severity": config["severity"],
+                    "evidence": len(matching_alerts),
+                    "description": self._get_threat_description(threat_name),
+                    "indicators": [a["message"] for a in matching_alerts[:3]],
+                    "affected_services": list(set(a["service"] for a in matching_alerts)),
+                    "recommendations": self._get_threat_recommendations(threat_name),
+                    "time_pattern": self._analyze_time_pattern(matching_alerts),
+                    "probability": threat_level["probability"],
+                    "next_steps": self._predict_next_actions(threat_name, matching_alerts)
+                })
+        
+        return threats
+    
+    def _assess_threat_level(self, threat_name, alerts):
+        """Assess confidence and probability of threat"""
+        count = len(alerts)
+        unique_services = len(set(a["service"] for a in alerts))
+        
+        if count >= 5 or unique_services >= 3:
+            confidence = "HIGH"
+            probability = 0.85
+        elif count >= 3 or unique_services >= 2:
+            confidence = "MEDIUM"
+            probability = 0.65
+        else:
+            confidence = "LOW"
+            probability = 0.40
+        
+        return {"confidence": confidence, "probability": probability}
+    
+    def _get_threat_description(self, threat_name):
+        descriptions = {
+            "brute_force": "Multiple authentication failures detected - potential brute force attack in progress",
+            "ddos_attempt": "Network anomalies suggest possible DDoS attack targeting API endpoints",
+            "data_exfiltration": "Unusual data access patterns - possible data exfiltration attempt",
+            "privilege_escalation": "Multiple permission failures - possible privilege escalation attempt",
+            "service_disruption": "Service instability - potential targeted disruption attack"
+        }
+        return descriptions.get(threat_name, "Security threat detected")
+    
+    def _get_threat_recommendations(self, threat_name):
+        recommendations = {
+            "brute_force": [
+                "Enable rate limiting on auth endpoints",
+                "Implement CAPTCHA after failed attempts",
+                "Block suspicious IP ranges",
+                "Enable 2FA for affected accounts"
+            ],
+            "ddos_attempt": [
+                "Enable DDoS protection services",
+                "Scale up edge infrastructure",
+                "Implement request throttling",
+                "Enable WAF rules"
+            ],
+            "data_exfiltration": [
+                "Monitor outbound traffic patterns",
+                "Enable data loss prevention (DLP)",
+                "Review access logs for anomalies",
+                "Rotate credentials immediately"
+            ],
+            "privilege_escalation": [
+                "Audit permission changes",
+                "Review sudoers file",
+                "Enable least privilege access",
+                "Monitor for suspicious process execution"
+            ],
+            "service_disruption": [
+                "Enable circuit breakers",
+                "Implement graceful degradation",
+                "Scale redundant services",
+                "Review deployment for malicious code"
+            ]
+        }
+        return recommendations.get(threat_name, ["Investigate immediately"])
+    
+    def _analyze_time_pattern(self, alerts):
+        """Analyze timing of alerts to detect patterns"""
+        if len(alerts) < 2:
+            return "Insufficient data for pattern analysis"
+        
+        try:
+            times = []
+            for alert in alerts:
+                dt = datetime.fromisoformat(alert['timestamp'].replace('Z', '+00:00'))
+                times.append(dt)
+            
+            times.sort()
+            
+            # Calculate intervals
+            intervals = [(times[i+1] - times[i]).seconds for i in range(len(times)-1)]
+            avg_interval = sum(intervals) / len(intervals)
+            
+            if avg_interval < 5:
+                return f"Rapid attacks every {avg_interval:.0f} seconds - automated attack suspected"
+            elif avg_interval < 60:
+                return f"Steady attack pattern every {avg_interval:.0f} seconds"
+            else:
+                return f"Slow, probing pattern over {len(times)} minutes"
+        except:
+            return "Pattern analysis unavailable"
+    
+    def _predict_next_actions(self, threat_name, alerts):
+        """Predict what attacker might do next"""
+        predictions = {
+            "brute_force": [
+                "Will target additional user accounts",
+                "May switch to credential stuffing",
+                "Likely to attempt password spraying next"
+            ],
+            "ddos_attempt": [
+                "Will escalate to application-layer attacks",
+                "May target different endpoints",
+                "Could combine with other attack vectors"
+            ],
+            "data_exfiltration": [
+                "Will attempt to extract larger datasets",
+                "May establish persistence mechanisms",
+                "Could target backup systems next"
+            ],
+            "privilege_escalation": [
+                "Will attempt to execute malicious code",
+                "May create backdoor accounts",
+                "Likely to move laterally in network"
+            ],
+            "service_disruption": [
+                "May attempt to corrupt data",
+                "Could target failover systems",
+                "Might attempt to wipe logs"
+            ]
+        }
+        return predictions.get(threat_name, ["Monitor for escalation"])
+    
+    def predict_future_state(self, alerts, time_window_minutes=5):
+        """Predict system state in near future"""
+        if not alerts:
+            return {"status": "stable", "confidence": "LOW"}
+        
+        # Calculate failure rate
+        recent_alerts = alerts[-20:] if len(alerts) > 20 else alerts
+        critical_count = sum(1 for a in recent_alerts if a.get('severity') == 'CRITICAL')
+        high_count = sum(1 for a in recent_alerts if a.get('severity') == 'HIGH')
+        
+        # Trend analysis
+        if critical_count > len(recent_alerts) * 0.3:
+            prediction = "CRITICAL_FAILURE"
+            confidence = "HIGH"
+            eta = "within 2 minutes"
+            message = "System collapse imminent - multiple critical failures detected"
+        elif high_count > len(recent_alerts) * 0.5:
+            prediction = "MAJOR_DEGRADATION"
+            confidence = "MEDIUM"
+            eta = "within 5 minutes"
+            message = "Rapid degradation expected - take immediate action"
+        elif critical_count > 0:
+            prediction = "INSTABILITY"
+            confidence = "MEDIUM"
+            eta = "within 10 minutes"
+            message = "Further failures likely if root cause not addressed"
+        else:
+            prediction = "STABLE"
+            confidence = "HIGH"
+            eta = "no immediate threat"
+            message = "System appears stable with current intervention"
+        
+        return {
+            "prediction": prediction,
+            "confidence": confidence,
+            "eta": eta,
+            "message": message,
+            "risk_factors": {
+                "critical_alerts": critical_count,
+                "high_alerts": high_count,
+                "affected_services": len(set(a["service"] for a in recent_alerts))
+            }
+        }
+
+# Initialize predictor
+threat_predictor = ThreatPredictor()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def make_alert(alert_type: str, service: str, severity: str = None) -> dict:
@@ -332,56 +657,240 @@ def generate_recommendations(alerts, root_cause, clusters):
     # Limit to 5 recommendations
     return recommendations[:5]
 
-async def generate_ai_summary(alerts, root_cause, clusters, severity_distribution):
-    """Generate AI-powered narrative using Gemini"""
+def detect_temporal_patterns(alerts):
+    """Detect time-based relationships between alerts"""
+    if len(alerts) < 2:
+        return []
+    
+    # Sort by timestamp
+    sorted_alerts = sorted(alerts, key=lambda x: x.get('timestamp', ''))
+    patterns = []
+    
+    # Look for cascading failures (one service failing, then its dependencies)
+    for i in range(len(sorted_alerts)-1):
+        current = sorted_alerts[i]
+        next_alert = sorted_alerts[i+1]
+        
+        # Check if next alert is from a dependent service
+        deps = SERVICE_GRAPH.get(current['service'], [])
+        if next_alert['service'] in deps:
+            patterns.append({
+                'type': 'cascade',
+                'from': current['service'],
+                'to': next_alert['service'],
+                'time_diff': 'immediate'
+            })
+    
+    # Look for correlated spikes (multiple alerts same time)
+    time_groups = defaultdict(list)
+    for alert in sorted_alerts:
+        try:
+            dt = datetime.fromisoformat(alert['timestamp'].replace('Z', '+00:00'))
+            # Group by minute
+            key = dt.strftime('%Y-%m-%d %H:%M')
+            time_groups[key].append(alert)
+        except:
+            pass
+    
+    for minute, group in time_groups.items():
+        if len(group) > 3:
+            services = list(set(a['service'] for a in group))
+            patterns.append({
+                'type': 'spike',
+                'time': minute,
+                'services': services,
+                'count': len(group)
+            })
+    
+    return patterns[:5]  # Return top patterns
+
+async def generate_ai_summary(alerts, root_cause, clusters, severity_distribution, threats=None, cascade_chain=None):
+    """Generate AI-powered narrative using Gemini with relationship analysis"""
+    
+    # Build security context if threats exist
+    security_context = ""
+    if threats and len(threats) > 0:
+        threat_descriptions = []
+        for t in threats:
+            threat_descriptions.append(f"- {t['type'].replace('_', ' ').upper()}: {t['description']} (Confidence: {t['confidence']})")
+        
+        security_context = f"""
+SECURITY THREATS DETECTED:
+{chr(10).join(threat_descriptions)}
+
+This appears to be {'an active attack' if any(t['confidence'] == 'HIGH' for t in threats) else 'suspicious activity'}.
+"""
     
     if not gemini_model:
-        # Fallback summary if Gemini not available
-        return f"Root cause identified as {root_cause['service']} ({root_cause['confidence']} confidence). Affected services: {', '.join(root_cause['affected'][:3])}. Priority: Address CRITICAL alerts first, then investigate cascade pattern."
+        # Enhanced fallback with relationship mapping
+        return generate_fallback_narrative(alerts, root_cause, clusters, cascade_chain, threats)
     
     try:
-        # Prepare alert summary for Gemini
+        # Prepare rich context for Gemini
         total_critical = severity_distribution.get("CRITICAL", 0)
         total_high = severity_distribution.get("HIGH", 0)
         total_medium = severity_distribution.get("MEDIUM", 0)
         
-        prompt = f"""You are an SRE expert analyzing an incident. Write a 3-4 sentence incident narrative based on this data:
+        # Group alerts by time to show patterns
+        alerts_by_time = sorted(alerts, key=lambda x: x.get('timestamp', ''))
+        time_window = "unknown"
+        if len(alerts_by_time) >= 2:
+            try:
+                t1 = datetime.fromisoformat(alerts_by_time[0]['timestamp'].replace('Z', '+00:00'))
+                t2 = datetime.fromisoformat(alerts_by_time[-1]['timestamp'].replace('Z', '+00:00'))
+                delta = t2 - t1
+                if delta.total_seconds() < 60:
+                    time_window = f"{int(delta.total_seconds())} seconds"
+                elif delta.total_seconds() < 3600:
+                    time_window = f"{int(delta.total_seconds() // 60)} minutes"
+                else:
+                    time_window = f"{int(delta.total_seconds() // 3600)} hours"
+            except Exception as e:
+                print(f"Time parsing error: {e}")
+                pass
+        
+        # Build service dependency relationships
+        service_relations = []
+        for svc in root_cause.get('affected', []):
+            deps = SERVICE_GRAPH.get(svc, [])
+            if deps:
+                service_relations.append(f"{svc} depends on {', '.join(deps)}")
+        
+        # Build causal chains from cascade
+        causal_relationships = []
+        if cascade_chain and len(cascade_chain) > 1:
+            for i in range(len(cascade_chain)-1):
+                causal_relationships.append(f"{cascade_chain[i]} → {cascade_chain[i+1]}")
+        
+        # Group alerts by pattern
+        pattern_groups = defaultdict(list)
+        for alert in alerts[:10]:  # Limit for prompt size
+            key = f"{alert['service']}:{alert['type']}"
+            pattern_groups[key].append(alert)
+        
+        recurring_patterns = []
+        for key, group in pattern_groups.items():
+            if len(group) > 1:
+                svc, typ = key.split(':')
+                recurring_patterns.append(f"{typ} on {svc} occurred {len(group)} times")
+        
+        # Build the enhanced prompt
+        prompt = f"""You are an SRE and security expert analyzing a complex incident with multiple correlated alerts. 
 
-Alert Statistics:
-- Total alerts: {len(alerts)}
-- CRITICAL: {total_critical}, HIGH: {total_high}, MEDIUM: {total_medium}
-- Services affected: {', '.join(root_cause['affected'][:5])}
+{security_context}
+
+Write a detailed incident narrative (4-6 sentences) that explains the causal relationships between alerts and identifies if this is an attack.
+
+Incident Data:
+- Time window: {time_window}
+- Total alerts: {len(alerts)} (Critical: {total_critical}, High: {total_high}, Medium: {total_medium})
+- Services affected: {', '.join(root_cause.get('affected', [])[:7])}
 
 Root Cause Analysis:
-- Primary cause: {root_cause['service']}
+- Primary cause: {root_cause['service']} failure
 - Confidence: {root_cause['confidence']}
-- Failure cascade: {' → '.join(root_cause.get('cascade_chain', ['Unknown']))}
+- Failure cascade: {' → '.join(cascade_chain or ['Unknown'])}
 
-Top alert clusters:
-{chr(10).join([f"- {c['service']}: {c['count']} {c['type']} alerts ({c['dominant_severity']})" for c in clusters[:3]])}
+Service Dependencies:
+{chr(10).join(service_relations[:3])}
 
-Write a concise, technical narrative that:
-1. Starts with the root cause
-2. Explains the impact and cascade
-3. Ends with recommended focus area
+Causal Chain:
+{chr(10).join(causal_relationships)}
 
-Keep it to 3-4 sentences total. Be direct and technical."""
-        
+Recurring Patterns:
+{chr(10).join(recurring_patterns[:3])}
+
+Top Alert Clusters:
+{chr(10).join([f"- {c['service']}: {c['count']} {c['type']} alerts ({c['dominant_severity']})" for c in clusters[:4]])}
+
+Write a narrative that:
+1. Starts with the root cause and explains WHY it triggered other alerts
+2. Shows the cascade of failures through service dependencies
+3. Identifies if this is an attack or system failure
+4. Predicts what might happen next
+5. Quantifies the impact (how many services, severity levels)
+6. Ends with specific remediation focus areas
+
+Be technical but narrative. Explain the relationships between alerts, not just list them."""
+
+        print(f"Sending prompt to Gemini: {prompt[:200]}...")  # Debug log
         response = gemini_model.generate_content(prompt)
-        return response.text.strip()
+        
+        if response and response.text:
+            return response.text.strip()
+        else:
+            print("Gemini returned empty response")
+            return generate_fallback_narrative(alerts, root_cause, clusters, cascade_chain, threats)
         
     except Exception as e:
-        print(f"Gemini error: {e}")
-        return f"Analysis complete. Root cause: {root_cause['service']} ({root_cause['confidence']}). Affected {len(root_cause['affected'])} services. Focus on CRITICAL alerts first."
+        print(f"Gemini error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return generate_fallback_narrative(alerts, root_cause, clusters, cascade_chain, threats)
+    
+def generate_fallback_narrative(alerts, root_cause, clusters, cascade_chain=None, threats=None):
+    """Generate a relationship-aware narrative without Gemini"""
+    
+    total = len(alerts)
+    critical = sum(1 for a in alerts if a.get('severity') == 'CRITICAL')
+    high = sum(1 for a in alerts if a.get('severity') == 'HIGH')
+    
+    # Build relationship sentences
+    root_svc = root_cause.get('service', 'Unknown')
+    affected = root_cause.get('affected', [])
+    
+    # Find dependent services
+    downstream = []
+    for svc in affected:
+        if svc != root_svc and root_svc in SERVICE_GRAPH.get(svc, []):
+            downstream.append(svc)
+    
+    # Add security context if threats exist
+    if threats and len(threats) > 0:
+        threat_types = [t['type'].replace('_', ' ') for t in threats]
+        narrative = f"SECURITY INCIDENT: {', '.join(threat_types[:2]).upper()} detected. "
+    else:
+        narrative = f"System incident originated from {root_svc} failure"
+    
+    if downstream:
+        narrative += f", cascading to {', '.join(downstream[:3])}"
+    
+    narrative += f". Impact includes {critical} critical and {high} high severity alerts"
+    
+    # Add pattern recognition
+    repeating = []
+    for cluster in clusters[:3]:
+        if cluster['count'] > 2:
+            repeating.append(f"{cluster['type']} on {cluster['service']} ({cluster['count']} times)")
+    
+    if repeating:
+        narrative += f". Recurring patterns detected: {'; '.join(repeating[:2])}"
+    
+    # Add relationship insight
+    if cascade_chain and len(cascade_chain) > 1:
+        narrative += f". Failure cascade: {' → '.join(cascade_chain[:4])}"
+    
+    # Add threat prediction if any
+    if threats and len(threats) > 0:
+        narrative += f". Active threat requires immediate security response."
+    
+    # Add recommendation
+    narrative += f". Priority: Investigate {root_svc} and monitor {', '.join(downstream[:2]) if downstream else 'affected services'}."
+    
+    return narrative
 
 # ── ROUTES ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
+    stored = _db.execute("SELECT COUNT(*) as n FROM alerts").fetchone()["n"]
+    analyses = _db.execute("SELECT COUNT(*) as n FROM analyses").fetchone()["n"]
     return {
-        "status": "ok", 
+        "status": "ok",
         "service": "SENTINEL AIOps Backend",
-        "gemini_configured": gemini_model is not None
+        "gemini_configured": gemini_model is not None,
+        "stored_alerts": stored,
+        "stored_analyses": analyses,
     }
 
 
@@ -394,6 +903,7 @@ def generate_alerts(req: GenerateRequest):
         raise HTTPException(400, f"Unknown alert_type: {req.alert_type}")
 
     alerts = [make_alert(req.alert_type, req.service) for _ in range(req.quantity)]
+    _store_alerts(alerts)
     return {"alerts": alerts, "count": len(alerts)}
 
 
@@ -408,6 +918,7 @@ def simulate_incident():
             alerts.append(make_alert(step["type"], step["service"], step["severity"]))
     
     chain_summary = [f"{s['service']} → {s['type']}" for s in chain]
+    _store_alerts(alerts)
     return {
         "alerts": alerts,
         "chain_summary": chain_summary,
@@ -417,7 +928,7 @@ def simulate_incident():
 
 @app.post("/analyze")
 async def analyze(data: dict):
-    """Full alert analysis with AI-powered insights."""
+    """Full alert analysis with AI-powered insights and threat detection."""
     alerts = data.get("alerts", [])
     if not alerts:
         raise HTTPException(400, "No alerts to analyze")
@@ -469,8 +980,12 @@ async def analyze(data: dict):
         svc = alert.get("service", "Unknown")
         service_counts[svc] = service_counts.get(svc, 0) + 1
     
-    # Generate AI summary
-    ai_summary = await generate_ai_summary(alerts, root_cause, clusters, severity_distribution)
+    # Step 7: Threat detection and prediction
+    threats = threat_predictor.analyze_threats(alerts)
+    future_prediction = threat_predictor.predict_future_state(alerts)
+    
+    # Step 8: Temporal patterns
+    temporal_patterns = detect_temporal_patterns(alerts)
     
     # Build cascade chain from root cause
     cascade_chain = root_cause.get("cascade_chain", [])
@@ -480,14 +995,38 @@ async def analyze(data: dict):
             if svc != root_cause["service"]:
                 cascade_chain.append(f"{svc} degradation")
     
+    # Enhanced cascade analysis
+    enhanced_cascade = []
+    if cascade_chain:
+        for i, step in enumerate(cascade_chain):
+            if i < len(cascade_chain) - 1:
+                # Find alerts that caused this transition
+                cause_alerts = [a for a in scored_alerts if a['service'] in step and a['severity'] == 'CRITICAL']
+                enhanced_cascade.append({
+                    'step': step,
+                    'triggered_by': [a['type'] for a in cause_alerts[:2]],
+                    'next': cascade_chain[i+1] if i+1 < len(cascade_chain) else None
+                })
+    
+    # Generate AI summary with threat context
+    ai_summary = await generate_ai_summary(alerts, root_cause, clusters, severity_distribution, threats, cascade_chain)
+    
+    # Impact summary
+    impact_summary = {
+        "services_affected": len(root_cause['affected']),
+        "critical_services": len([s for s in root_cause['affected'] if any(a['service'] == s and a['severity'] == 'CRITICAL' for a in alerts)]),
+        "cascade_depth": len(cascade_chain)
+    }
+    
     # Return complete response matching frontend expectations
-    return {
+    response = {
         "noise_removed": noise_count,
         "total_alerts": len(alerts),
         "filtered_alerts": len(filtered_alerts),
         "root_cause": root_cause["service"],
         "confidence": root_cause["confidence"],
         "cascade_chain": cascade_chain,
+        "enhanced_cascade": enhanced_cascade,
         "clusters": clusters,
         "priority_ranking": priority_ranking,
         "recommendations": recommendations,
@@ -495,8 +1034,18 @@ async def analyze(data: dict):
         "severity_distribution": severity_distribution,
         "type_counts": type_counts,
         "service_counts": service_counts,
-        "top_alerts": scored_alerts[:5]
+        "top_alerts": scored_alerts[:5],
+        "security_threats": threats,
+        "future_prediction": future_prediction,
+        "attack_probability": len(threats) > 0,
+        "security_status": "UNDER_ATTACK" if any(t["confidence"] == "HIGH" for t in threats) else "MONITORING",
+        "temporal_patterns": temporal_patterns,
+        "impact_summary": impact_summary
     }
+    
+    _store_analysis(len(alerts), noise_count, len(filtered_alerts),
+                    root_cause["service"], root_cause["confidence"], response)
+    return response
 
 
 @app.post("/analyze/stream")
@@ -510,6 +1059,7 @@ async def analyze_alerts_stream(req: AnalyzeRequest):
     scored = score_alerts(filtered)
     root_cause = find_root_cause(scored)
     clusters = correlate_alerts(scored)
+    threats = threat_predictor.analyze_threats(req.alerts)
     
     # Get severity distribution
     severity_distribution = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0}
@@ -517,7 +1067,7 @@ async def analyze_alerts_stream(req: AnalyzeRequest):
         severity_distribution[alert.get("severity", "MEDIUM")] += 1
     
     # Generate summary
-    summary = await generate_ai_summary(req.alerts, root_cause, clusters, severity_distribution)
+    summary = await generate_ai_summary(req.alerts, root_cause, clusters, severity_distribution, threats)
     
     async def event_generator():
         # Split into words and send as SSE
@@ -528,6 +1078,46 @@ async def analyze_alerts_stream(req: AnalyzeRequest):
         yield "data: [DONE]\n\n"
     
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/stats")
+def get_stats():
+    """Aggregate reduction metrics — the '84% reduction' number lives here."""
+    total_raw    = _db.execute("SELECT COALESCE(SUM(total_alerts),0) as n FROM analyses").fetchone()["n"]
+    total_noise  = _db.execute("SELECT COALESCE(SUM(noise_removed),0) as n FROM analyses").fetchone()["n"]
+    total_clean  = _db.execute("SELECT COALESCE(SUM(clean_alerts),0) as n FROM analyses").fetchone()["n"]
+    by_sev       = _db.execute("SELECT severity, COUNT(*) as n FROM alerts GROUP BY severity").fetchall()
+    by_type      = _db.execute("SELECT type, COUNT(*) as n FROM alerts GROUP BY type ORDER BY n DESC LIMIT 10").fetchall()
+    by_svc       = _db.execute("SELECT service, COUNT(*) as n FROM alerts GROUP BY service ORDER BY n DESC").fetchall()
+    reduction_pct = round((total_noise / total_raw * 100), 1) if total_raw > 0 else 0.0
+    return {
+        "total_raw_alerts":    total_raw,
+        "total_noise_removed": total_noise,
+        "total_clean_alerts":  total_clean,
+        "reduction_percent":   reduction_pct,
+        "by_severity":         {r["severity"]: r["n"] for r in by_sev},
+        "top_alert_types":     {r["type"]: r["n"] for r in by_type},
+        "by_service":          {r["service"]: r["n"] for r in by_svc},
+    }
+
+
+@app.get("/history")
+def get_history(limit: int = 15):
+    """Return last N analysis runs."""
+    rows = _db.execute(
+        "SELECT id, created_at, total_alerts, noise_removed, clean_alerts, root_cause, confidence FROM analyses ORDER BY id DESC LIMIT ?",
+        (limit,)
+    ).fetchall()
+    return {"analyses": [dict(r) for r in rows]}
+
+
+@app.get("/history/{analysis_id}")
+def get_analysis(analysis_id: int):
+    """Return full payload for a past analysis."""
+    row = _db.execute("SELECT payload FROM analyses WHERE id=?", (analysis_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Analysis not found")
+    return json.loads(row["payload"])
 
 
 if __name__ == "__main__":

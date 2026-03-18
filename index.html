@@ -6,6 +6,7 @@
 <title>SENTINEL — AIOps Control Panel</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
 <style>
   :root {
     --bg: #080c0f;
@@ -463,6 +464,80 @@
   .chart-label { font-size: 10px; color: var(--text-muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
   .chart-full { grid-column: 1/-1; }
 
+
+  /* ── Stats / History overlay ───────────────────────────────────────────── */
+  .drawer {
+    position: fixed; top: 48px; right: 0; bottom: 0;
+    width: 380px; background: var(--surface);
+    border-left: 1px solid var(--border);
+    transform: translateX(100%); transition: transform .3s ease;
+    z-index: 500; display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .drawer.open { transform: translateX(0); }
+  .drawer-hdr {
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+    padding: 10px 14px; display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  .drawer-title { font-family: 'Rajdhani',sans-serif; font-size: 13px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; flex: 1; }
+  .drawer-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .dtab { padding: 8px 14px; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; }
+  .dtab:hover { color: var(--text-dim); }
+  .dtab.active { color: var(--purple); border-bottom-color: var(--purple); }
+  .dtab-content { display: none; flex: 1; overflow-y: auto; padding: 14px; }
+  .dtab-content.show { display: block; }
+  .dtab-content::-webkit-scrollbar { width: 3px; }
+  .dtab-content::-webkit-scrollbar-thumb { background: var(--border2); }
+
+  /* Reduction meter */
+  .reduction-big {
+    text-align: center; padding: 18px 0 12px;
+    border-bottom: 1px solid var(--border); margin-bottom: 14px;
+  }
+  .reduction-pct {
+    font-family: 'Rajdhani', sans-serif; font-size: 52px; font-weight: 700;
+    color: var(--green); line-height: 1;
+    text-shadow: 0 0 30px rgba(0,255,157,.3);
+  }
+  .reduction-sub { font-size: 11px; color: var(--text-muted); letter-spacing: 2px; margin-top: 4px; }
+  .reduction-bar-wrap { padding: 0 20px; margin-top: 12px; }
+  .reduction-bar { height: 6px; background: var(--border); position: relative; }
+  .reduction-bar-fill { height: 100%; background: linear-gradient(90deg, var(--red-dim), var(--green)); transition: width 1.2s ease-out; }
+  .reduction-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+
+  .stat2-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .stat2-row:last-child { border-bottom: none; }
+  .stat2-lbl { font-size: 11px; color: var(--text-dim); }
+  .stat2-val { font-size: 14px; font-family: 'Rajdhani', sans-serif; font-weight: 700; color: var(--text); }
+
+  /* History rows */
+  .hist-row {
+    display: grid; grid-template-columns: 24px 1fr 60px 60px;
+    gap: 8px; align-items: center;
+    padding: 7px 0; border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: background .1s; font-size: 11px;
+  }
+  .hist-row:hover { background: var(--surface2); margin: 0 -14px; padding: 7px 14px; }
+  .hist-row:last-child { border-bottom: none; }
+  .hist-id { color: var(--text-muted); font-size: 10px; }
+  .hist-rc { color: var(--text); }
+  .hist-noise { color: var(--green-dim); font-size: 10px; }
+  .hist-conf { font-size: 10px; font-weight: 600; letter-spacing: 1px; }
+  .hist-conf.HIGH   { color: var(--critical); }
+  .hist-conf.MEDIUM { color: var(--high); }
+  .hist-conf.LOW    { color: var(--yellow); }
+
+  /* Fab button */
+  .fab {
+    position: fixed; bottom: 20px; right: 20px; z-index: 400;
+    width: 44px; height: 44px;
+    background: var(--purple-dark); border: 1px solid #7b2fff; color: var(--purple);
+    font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all .2s; box-shadow: 0 0 16px rgba(123,47,255,.3);
+  }
+  .fab:hover { background: #2d1a5e; box-shadow: 0 0 24px rgba(123,47,255,.5); }
+  .drawer.open ~ .fab { right: 400px; }
+
   /* Toast */
   .toast {
     position: fixed; bottom: 20px; right: 20px;
@@ -497,6 +572,7 @@
     <div class="clock" id="clock">00:00:00</div>
   </div>
 </div>
+
 
 <!-- ═══ LAYOUT ════════════════════════════════════════════════════════════════ -->
 <div class="layout">
@@ -672,11 +748,12 @@ async function healthCheck() {
   try {
     const r = await fetch(`${url}/health`, { signal: AbortSignal.timeout(3000) });
     if (r.ok) {
-      const d = await r.json();
+      const data = await r.json();
       S.backendOnline = true;
       ind.className = 'backend-indicator online';
       dot.className = 'dot nominal';
-      lbl.textContent = d.gemini_configured ? 'GEMINI ✓' : 'GEMINI ✗ (no key)';
+      const stored = data.stored_alerts ? ` (${data.stored_alerts})` : '';
+      lbl.textContent = (data.gemini_configured ? 'GEMINI ✓' : 'GEMINI ✗') + stored;
       return;
     }
   } catch {}
@@ -857,7 +934,7 @@ async function simulateIncident() {
   }
 }
 
-// ═══ ANALYZE — calls /analyze/stream for AI summary, then /analyze ══════════
+// ═══ ANALYZE — calls /analyze for AI summary ════════════════════════════════
 async function analyzeAlerts() {
   if (S.alerts.length === 0) { toast('No alerts to analyze', 'error'); return; }
   if (S.isAnalyzing) return;
@@ -923,19 +1000,19 @@ function renderResults(r) {
   wrap.innerHTML = '';
 
   // ── Noise Intelligence Banner
-if (r.noise_removed !== undefined) {
-  const noiseDiv = document.createElement('div');
-  noiseDiv.className = 'card';
-  noiseDiv.innerHTML = `
-    <div class="card-body" style="color:var(--orange)">
-      ⚠ Noise Reduction Active<br>
-      Removed: <strong>${r.noise_removed}</strong> duplicates<br>
-      Processed: <strong>${r.filtered_alerts}</strong> clean signals from 
-      <strong>${r.total_alerts}</strong> raw alerts
-    </div>
-  `;
-  wrap.appendChild(noiseDiv);
-}
+  if (r.noise_removed !== undefined) {
+    const noiseDiv = document.createElement('div');
+    noiseDiv.className = 'card';
+    noiseDiv.innerHTML = `
+      <div class="card-body" style="color:var(--orange)">
+        ⚠ Noise Reduction Active<br>
+        Removed: <strong>${r.noise_removed}</strong> duplicates<br>
+        Processed: <strong>${r.filtered_alerts}</strong> clean signals from 
+        <strong>${r.total_alerts}</strong> raw alerts
+      </div>
+    `;
+    wrap.appendChild(noiseDiv);
+  }
 
   // ── AI Summary placeholder (will be filled by streaming)
   const summaryDiv = document.createElement('div');
@@ -946,71 +1023,136 @@ if (r.noise_removed !== undefined) {
   `;
   wrap.appendChild(summaryDiv);
 
+  // ── Security Threats Section
+  if (r.security_threats && r.security_threats.length > 0) {
+    const securityCard = renderSecurityThreats(r.security_threats);
+    if (securityCard) {
+      wrap.appendChild(securityCard.card);
+    }
+  } else {
+    // Show clean bill of health
+    const securityCard = makeCard('🛡️ Security Status', '🔒');
+    securityCard.body.innerHTML = `
+      <div style="display:flex; align-items:center; gap:12px; padding:8px;">
+        <div style="font-size:24px;">✅</div>
+        <div>
+          <div style="color:var(--green); font-size:12px; font-weight:600;">NO ACTIVE THREATS DETECTED</div>
+          <div style="color:var(--text-muted); font-size:11px; margin-top:4px;">System appears secure - continuing normal monitoring</div>
+        </div>
+      </div>
+    `;
+    wrap.appendChild(securityCard.card);
+  }
+
+  // ── Future Prediction Card
+  if (r.future_prediction) {
+    const pred = r.future_prediction;
+    const predCard = makeCard('🔮 System Forecast', '📡');
+    
+    const statusColor = pred.prediction === 'CRITICAL_FAILURE' ? 'var(--critical)' : 
+                        pred.prediction === 'MAJOR_DEGRADATION' ? 'var(--orange)' : 
+                        pred.prediction === 'INSTABILITY' ? 'var(--yellow)' : 'var(--green)';
+    
+    predCard.body.innerHTML = `
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="font-size:32px;">
+          ${pred.prediction === 'CRITICAL_FAILURE' ? '💀' : 
+            pred.prediction === 'MAJOR_DEGRADATION' ? '⚠️' : 
+            pred.prediction === 'INSTABILITY' ? '🌊' : '✅'}
+        </div>
+        <div style="flex:1;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+            <span style="color:${statusColor}; font-size:14px; font-weight:600;">${pred.prediction.replace('_', ' ')}</span>
+            <span style="background:${statusColor}; color:var(--bg); padding:2px 6px; font-size:10px;">${pred.confidence}</span>
+          </div>
+          <div style="color:var(--text); font-size:12px; margin-bottom:4px;">${pred.message}</div>
+          <div style="color:var(--orange); font-size:11px;">⏱️ ETA: ${pred.eta}</div>
+          
+          <div style="margin-top:8px; display:grid; grid-template-columns:repeat(3,1fr); gap:4px;">
+            <div style="background:var(--surface2); padding:4px; text-align:center;">
+              <div style="color:${pred.risk_factors?.critical_alerts > 0 ? 'var(--critical)' : 'var(--text-muted)'}; font-size:12px;">${pred.risk_factors?.critical_alerts || 0}</div>
+              <div style="font-size:8px; color:var(--text-muted);">CRITICAL</div>
+            </div>
+            <div style="background:var(--surface2); padding:4px; text-align:center;">
+              <div style="color:${pred.risk_factors?.high_alerts > 0 ? 'var(--high)' : 'var(--text-muted)'}; font-size:12px;">${pred.risk_factors?.high_alerts || 0}</div>
+              <div style="font-size:8px; color:var(--text-muted);">HIGH</div>
+            </div>
+            <div style="background:var(--surface2); padding:4px; text-align:center;">
+              <div style="color:var(--text); font-size:12px;">${pred.risk_factors?.affected_services || 0}</div>
+              <div style="font-size:8px; color:var(--text-muted);">SERVICES</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    wrap.appendChild(predCard.card);
+  }
+
   // ── Root Cause
   const rc = makeCard('⚡ Root Cause', '🚨');
-  const rcData = {
-    service: typeof r.root_cause === 'object' ? r.root_cause.service : r.root_cause,
+  const cascade = (r.cascade_chain || []);
+  const rcData = typeof r.root_cause === 'object' ? r.root_cause : {
+    service: r.root_cause,
     confidence: r.confidence || 'MEDIUM',
-    affected: Object.keys(r.service_counts || {})
+    affected: []
   };
-  const cascadeHtml = (r.cascade_chain || []).length
-    ? `<div style="margin-top:10px"><div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:5px">CASCADE CHAIN</div><div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">${(r.cascade_chain).map((c,i,arr) => '<span style=\"font-size:10px;padding:2px 8px;background:var(--red-dark);border:1px solid var(--red-dim);color:var(--red)\">' + c + '</span>' + (i < arr.length-1 ? '<span style=\"color:var(--text-muted)\">→</span>' : '')).join('')}</div></div>`
-    : '';
 
-rc.body.innerHTML = `
-  <div class="rc-box">
-    <div class="rc-label">Primary Cause Identified</div>
-    <div class="rc-name">⚡ ${rcData.service || 'Unknown'}</div>
-    <div class="rc-service">
-      Affected: ${(rcData.affected || []).join(', ') || 'N/A'}
+  rc.body.innerHTML = `
+    <div class="rc-box">
+      <div class="rc-label">Primary Cause Identified</div>
+      <div class="rc-name">⚡ ${rcData.service || 'Unknown'}</div>
+      <div class="rc-service">
+        Affected: ${(rcData.affected || []).join(', ') || 'N/A'}
+      </div>
+      <span class="rc-confidence ${rcData.confidence || 'MEDIUM'}">
+        ${rcData.confidence || 'MEDIUM'} CONFIDENCE
+      </span>
     </div>
-    <span class="rc-confidence ${rcData.confidence}">
-      ${rcData.confidence} CONFIDENCE
-    </span>
-  </div>
-  ${cascadeHtml}
-`;
-
+    <div class="cascade">
+      ${cascade.map(step => `<span class="cascade-step">${step}</span>`).join('<span class="cascade-arr">→</span>')}
+    </div>
+  `;
   wrap.appendChild(rc.card);
 
   // ── Top Scored Alerts
-if (r.top_alerts) {
-  const top = makeCard('🔥 Top Alerts (Scored)', '⚡');
+  if (r.top_alerts) {
+    const top = makeCard('🔥 Top Alerts (Scored)', '⚡');
 
-  r.top_alerts.forEach(a => {
-    const item = document.createElement('div');
-    item.className = 'cluster-item';
-    item.innerHTML = `
-      <div class="cluster-name">${a.service}</div>
-      <div class="cluster-tags">
-        <span class="cluster-tag">${a.type}</span>
-        <span class="cluster-tag">${a.severity}</span>
-        <span class="cluster-tag">Score: ${a.score}</span>
-      </div>
-    `;
-    top.body.appendChild(item);
-  });
+    r.top_alerts.forEach(a => {
+      const item = document.createElement('div');
+      item.className = 'cluster-item';
+      item.innerHTML = `
+        <div class="cluster-name">${a.service}</div>
+        <div class="cluster-tags">
+          <span class="cluster-tag">${a.type}</span>
+          <span class="cluster-tag">${a.severity}</span>
+          <span class="cluster-tag">Score: ${a.score}</span>
+        </div>
+      `;
+      top.body.appendChild(item);
+    });
 
-  wrap.appendChild(top.card);
-}
+    wrap.appendChild(top.card);
+  }
 
   // ── Clusters
   const cl = makeCard('◈ Alert Clusters', '🧩');
   (r.clusters || []).forEach(c => {
-  const item = document.createElement('div');
-  item.className = 'cluster-item';
-  item.innerHTML = `
-    <div class="cluster-name">${c.service} - ${c.type}</div>
-    <div class="cluster-tags">
-      <span class="cluster-tag">Count: ${c.count}</span>
-      <span class="cluster-tag">Score: ${c.total_score}</span>
-    </div>
-    <div class="cluster-sev ${c.dominant_severity}">
-      ${c.dominant_severity}
-    </div>
-  `;
-  cl.body.appendChild(item);
-});
+    const item = document.createElement('div');
+    item.className = 'cluster-item';
+    item.innerHTML = `
+      <div class="cluster-name">${c.service} - ${c.type}</div>
+      <div class="cluster-tags">
+        <span class="cluster-tag">Count: ${c.count}</span>
+        <span class="cluster-tag">Score: ${c.total_score}</span>
+      </div>
+      <div class="cluster-sev ${c.dominant_severity}">
+        ${c.dominant_severity}
+      </div>
+    `;
+    cl.body.appendChild(item);
+  });
   wrap.appendChild(cl.card);
 
   // ── Priority
@@ -1024,7 +1166,7 @@ if (r.top_alerts) {
     item.innerHTML = `
       <span class="pri-num">${i+1}</span>
       <div class="pri-wrap">
-        <div class="pri-name">${p.type} <span style=\"color:var(--blue);font-size:10px\">[${p.service||''}]</span></div>
+        <div class="pri-name">${p.type}</div>
         <div class="pri-reason">${p.reason||''}</div>
         <div class="pri-bar"><div class="pri-bar-fill" style="width:0%;background:${color}" data-w="${pct}%"></div></div>
       </div>
@@ -1074,6 +1216,66 @@ if (r.top_alerts) {
   setTimeout(() => renderCharts(r), 200);
 }
 
+// Security Threats Rendering Function
+function renderSecurityThreats(threats) {
+  if (!threats || threats.length === 0) {
+    return null;
+  }
+
+  const threatCard = makeCard('⚠️ ACTIVE SECURITY THREATS', '🚨');
+  
+  let threatHtml = '<div style="display:flex; flex-direction:column; gap:12px;">';
+  
+  threats.forEach(threat => {
+    const severityColor = threat.severity === 'CRITICAL' ? 'var(--critical)' : 'var(--high)';
+    
+    threatHtml += `
+      <div style="border:1px solid ${severityColor}; background:rgba(255,59,59,0.1); padding:12px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          <span style="background:${severityColor}; color:var(--bg); padding:2px 8px; font-size:10px; font-weight:600;">${threat.type.replace('_', ' ').toUpperCase()}</span>
+          <span style="color:${severityColor}; font-size:11px;">${threat.confidence} CONFIDENCE</span>
+          <span style="margin-left:auto; color:var(--text-muted); font-size:10px;">${threat.evidence} indicators</span>
+        </div>
+        
+        <div style="color:var(--text); font-size:12px; margin-bottom:6px;">${threat.description}</div>
+        
+        <div style="color:var(--orange); font-size:11px; margin:8px 0;">⚠️ Attack pattern: ${threat.time_pattern || 'Analyzing...'}</div>
+        
+        <div style="margin:10px 0;">
+          <div style="color:var(--text-muted); font-size:10px; margin-bottom:4px;">DETECTED INDICATORS:</div>
+          ${(threat.indicators || []).map(ind => `
+            <div style="background:var(--surface2); padding:4px 8px; margin:2px 0; font-size:11px; border-left:2px solid ${severityColor};">🔍 ${ind}</div>
+          `).join('')}
+        </div>
+        
+        <div style="margin:10px 0; padding:8px; background:rgba(0,0,0,0.3);">
+          <div style="color:var(--purple); font-size:10px; margin-bottom:4px;">🔮 PREDICTED NEXT ACTIONS:</div>
+          <ul style="margin:0; padding-left:16px; color:var(--text-dim); font-size:11px;">
+            ${(threat.next_steps || []).map(step => `<li>${step}</li>`).join('')}
+          </ul>
+        </div>
+        
+        <div style="margin-top:10px;">
+          <div style="color:var(--blue); font-size:10px; margin-bottom:4px;">🛡️ RECOMMENDATIONS:</div>
+          <div style="display:flex; flex-wrap:wrap; gap:4px;">
+            ${(threat.recommendations || []).map(rec => `
+              <span style="background:var(--surface2); border:1px solid var(--blue); color:var(--blue); padding:2px 6px; font-size:10px;">${rec}</span>
+            `).join('')}
+          </div>
+        </div>
+        
+        <div style="margin-top:8px; font-size:10px; color:var(--text-muted);">
+          Affected: ${(threat.affected_services || []).join(', ')}
+        </div>
+      </div>
+    `;
+  });
+  
+  threatHtml += '</div>';
+  threatCard.body.innerHTML = threatHtml;
+  return threatCard;
+}
+
 function makeCard(title, icon) {
   const card = document.createElement('div');
   card.className = 'card';
@@ -1089,15 +1291,29 @@ function makeCard(title, icon) {
 }
 
 function renderCharts(r) {
+  // Destroy existing charts
+  Object.values(S.charts).forEach(c => { 
+    try { 
+      if (c && typeof c.destroy === 'function') c.destroy(); 
+    } catch {} 
+  });
+  S.charts = {};
+
   const sev = r.severity_distribution || {};
   const types = r.type_counts || {};
 
-  Object.values(S.charts).forEach(c => { try { c.destroy(); } catch {} });
-  S.charts = {};
-
   const opts = {
     color: '#6b8fa3',
-    plugins: { legend: { labels: { color: '#6b8fa3', font: { family: 'JetBrains Mono', size: 10 }, boxWidth: 10, padding: 8 } } }
+    plugins: { 
+      legend: { 
+        labels: { 
+          color: '#6b8fa3', 
+          font: { family: 'JetBrains Mono', size: 10 }, 
+          boxWidth: 10, 
+          padding: 8 
+        } 
+      }
+    }
   };
 
   const sevCtx = document.getElementById('c-sev');
@@ -1105,10 +1321,13 @@ function renderCharts(r) {
     S.charts.sev = new Chart(sevCtx, {
       type: 'doughnut',
       data: {
-        labels: ['CRITICAL','HIGH','MEDIUM'],
-        datasets: [{ data: [sev.CRITICAL||0, sev.HIGH||0, sev.MEDIUM||0],
-          backgroundColor: ['rgba(255,59,59,.65)','rgba(255,140,0,.65)','rgba(255,215,0,.65)'],
-          borderColor: ['#ff3b3b','#ff8c00','#ffd700'], borderWidth: 1 }]
+        labels: ['CRITICAL', 'HIGH', 'MEDIUM'],
+        datasets: [{ 
+          data: [sev.CRITICAL||0, sev.HIGH||0, sev.MEDIUM||0],
+          backgroundColor: ['rgba(255,59,59,.65)', 'rgba(255,140,0,.65)', 'rgba(255,215,0,.65)'],
+          borderColor: ['#ff3b3b', '#ff8c00', '#ffd700'], 
+          borderWidth: 1 
+        }]
       },
       options: { ...opts, cutout: '60%' }
     });
@@ -1122,14 +1341,25 @@ function renderCharts(r) {
       type: 'bar',
       data: {
         labels,
-        datasets: [{ data: vals, backgroundColor: 'rgba(0,180,216,.3)', borderColor: '#00b4d8', borderWidth: 1 }]
+        datasets: [{ 
+          data: vals, 
+          backgroundColor: 'rgba(0,180,216,.3)', 
+          borderColor: '#00b4d8', 
+          borderWidth: 1 
+        }]
       },
       options: {
         ...opts,
         indexAxis: 'y',
         scales: {
-          x: { ticks: { color: '#3d5a6b', font: { size: 9, family: 'JetBrains Mono' } }, grid: { color: '#1e2d38' } },
-          y: { ticks: { color: '#3d5a6b', font: { size: 9, family: 'JetBrains Mono' } }, grid: { color: '#1e2d38' } }
+          x: { 
+            ticks: { color: '#3d5a6b', font: { size: 9, family: 'JetBrains Mono' } }, 
+            grid: { color: '#1e2d38' } 
+          },
+          y: { 
+            ticks: { color: '#3d5a6b', font: { size: 9, family: 'JetBrains Mono' } }, 
+            grid: { color: '#1e2d38' } 
+          }
         },
         plugins: { legend: { display: false } }
       }
@@ -1185,7 +1415,11 @@ function clearAll() {
   S.alerts = [];
   document.getElementById('log-stream').innerHTML = '<div class="log-placeholder">AWAITING CHAOS<br>GENERATE ALERTS TO BEGIN</div>';
   updateStatus();
-  Object.values(S.charts).forEach(c => { try { c.destroy(); } catch {} });
+  Object.values(S.charts).forEach(c => { 
+    try { 
+      if (c && typeof c.destroy === 'function') c.destroy(); 
+    } catch {} 
+  });
   S.charts = {};
   document.getElementById('results').innerHTML = '';
   showIdleState();
@@ -1232,6 +1466,223 @@ function toast(msg, type = 'info') {
   document.body.appendChild(div);
   toastTimer = setTimeout(() => div.remove(), 4000);
 }
+
+// ═══ DRAWER — STATS & HISTORY ════════════════════════════════════════════════
+let _drawerOpen = false;
+
+function toggleDrawer() {
+  _drawerOpen = !_drawerOpen;
+  const drawer = document.getElementById('drawer');
+  if (drawer) {
+    drawer.classList.toggle('open', _drawerOpen);
+    if (_drawerOpen) loadStats();
+  }
+}
+function closeDrawer() {
+  _drawerOpen = false;
+  const drawer = document.getElementById('drawer');
+  if (drawer) drawer.classList.remove('open');
+}
+function switchDrawerTab(name) {
+  document.querySelectorAll('.dtab').forEach(t => t.classList.toggle('active', t.dataset.dt === name));
+  document.querySelectorAll('.dtab-content').forEach(c => c.classList.toggle('show', c.id === `dt-${name}`));
+  if (name === 'history') loadHistory();
+  if (name === 'stats')   loadStats();
+}
+
+async function loadStats() {
+  if (!S.backendOnline) return;
+  try {
+    const res  = await fetch(`${apiUrl()}/stats`);
+    const data = await res.json();
+
+    const pct = data.reduction_percent || 0;
+    document.getElementById('dr-pct').textContent   = pct + '%';
+    document.getElementById('dr-raw').textContent   = data.total_raw_alerts + ' raw';
+    document.getElementById('dr-clean').textContent = data.total_clean_alerts + ' clean';
+    setTimeout(() => { 
+      const bar = document.getElementById('dr-bar');
+      if (bar) bar.style.width = pct + '%'; 
+    }, 50);
+
+    const body = document.getElementById('dr-stats-body');
+    const sev  = data.by_severity || {};
+    const types = data.top_alert_types || {};
+    const svcs  = data.by_service || {};
+
+    body.innerHTML = `
+      <div style="font-size:10px;color:var(--text-muted);letter-spacing:2px;margin-bottom:8px">CUMULATIVE COUNTS</div>
+      <div class="stat2-row"><span class="stat2-lbl">Total Raw Alerts</span>  <span class="stat2-val">${data.total_raw_alerts}</span></div>
+      <div class="stat2-row"><span class="stat2-lbl">Noise Removed</span>    <span class="stat2-val" style="color:var(--green)">${data.total_noise_removed}</span></div>
+      <div class="stat2-row"><span class="stat2-lbl">Clean Alerts</span>     <span class="stat2-val" style="color:var(--blue)">${data.total_clean_alerts}</span></div>
+      <div class="stat2-row"><span class="stat2-lbl">Critical</span>         <span class="stat2-val" style="color:var(--critical)">${sev.CRITICAL||0}</span></div>
+      <div class="stat2-row"><span class="stat2-lbl">High</span>             <span class="stat2-val" style="color:var(--high)">${sev.HIGH||0}</span></div>
+      <div class="stat2-row"><span class="stat2-lbl">Medium</span>           <span class="stat2-val" style="color:var(--medium)">${sev.MEDIUM||0}</span></div>
+      <div style="font-size:10px;color:var(--text-muted);letter-spacing:2px;margin:12px 0 8px">TOP ALERT TYPES</div>
+      ${Object.entries(types).map(([t,n]) => `<div class="stat2-row"><span class="stat2-lbl">${t}</span><span class="stat2-val">${n}</span></div>`).join('')}
+      <div style="font-size:10px;color:var(--text-muted);letter-spacing:2px;margin:12px 0 8px">BY SERVICE</div>
+      ${Object.entries(svcs).map(([s,n]) => `<div class="stat2-row"><span class="stat2-lbl">${s}</span><span class="stat2-val">${n}</span></div>`).join('')}
+    `;
+  } catch(e) {
+    document.getElementById('dr-stats-body').innerHTML = `<div style="color:var(--red);font-size:11px">${e.message}</div>`;
+  }
+}
+
+async function loadHistory() {
+  if (!S.backendOnline) return;
+  const wrap = document.getElementById('dr-hist-body');
+  wrap.innerHTML = '<div style="color:var(--text-muted);font-size:11px;padding:10px">Loading…</div>';
+  try {
+    const res  = await fetch(`${apiUrl()}/history?limit=20`);
+    const data = await res.json();
+    if (!data.analyses.length) {
+      wrap.innerHTML = '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:20px">No analyses yet</div>';
+      return;
+    }
+    wrap.innerHTML = data.analyses.map(a => `
+      <div class="hist-row" onclick="loadPastAnalysis(${a.id})">
+        <span class="hist-id">#${a.id}</span>
+        <span class="hist-rc">${a.root_cause || '?'}</span>
+        <span class="hist-noise">-${a.noise_removed} noise</span>
+        <span class="hist-conf ${a.confidence}">${a.confidence}</span>
+      </div>
+    `).join('');
+  } catch(e) {
+    wrap.innerHTML = `<div style="color:var(--red);font-size:11px">${e.message}</div>`;
+  }
+}
+
+async function loadPastAnalysis(id) {
+  try {
+    const res  = await fetch(`${apiUrl()}/history/${id}`);
+    const data = await res.json();
+    renderResults(data);
+    streamAiSummary(data.ai_summary || '');
+    document.getElementById('an-badge').textContent = `LOADED #${id}`;
+    closeDrawer();
+    toast(`Loaded analysis #${id}`, 'info');
+  } catch(e) {
+    toast(`Load failed: ${e.message}`, 'error');
+  }
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', function() {
+  // Set default qty button active
+  const qtyBtn = document.querySelector('.qty-btn[data-v="1"]');
+  if (qtyBtn) qtyBtn.classList.add('active');
+  
+  // Set auto-scroll toggle on
+  const scrollToggle = document.getElementById('tf-scroll');
+  if (scrollToggle) scrollToggle.classList.add('on');
+  
+  // Initialize status
+  updateStatus();
+  
+  // Add search listener
+  document.getElementById('search').addEventListener('input', applyFilters);
+});
+
+
+// Simulate real-time threat monitoring
+class ThreatMonitor {
+  constructor() {
+    this.monitoring = false;
+    this.baseline = {...S};
+  }
+  
+  start() {
+    if (this.monitoring) return;
+    this.monitoring = true;
+    this.interval = setInterval(() => this.checkForAnomalies(), 5000);
+  }
+  
+  stop() {
+    clearInterval(this.interval);
+    this.monitoring = false;
+  }
+  
+  checkForAnomalies() {
+    // Check alert velocity
+    const recentAlerts = S.alerts.slice(-10);
+    const timeWindow = 60000; // 1 minute
+    const now = Date.now();
+    
+    const recentCount = recentAlerts.filter(a => 
+      now - new Date(a.timestamp).getTime() < timeWindow
+    ).length;
+    
+    if (recentCount > 5) {
+      this.triggerAlert('HIGH_VELOCITY', `Alert storm detected: ${recentCount} alerts in last minute`);
+    }
+    
+    // Check for repeated failures from same service
+    const serviceFailures = {};
+    recentAlerts.forEach(a => {
+      serviceFailures[a.service] = (serviceFailures[a.service] || 0) + 1;
+    });
+    
+    Object.entries(serviceFailures).forEach(([service, count]) => {
+      if (count > 3) {
+        this.triggerAlert('SERVICE_FLOOD', `${service} is failing rapidly (${count} alerts)`);
+      }
+    });
+  }
+  
+  triggerAlert(type, message) {
+    // Show toast notification
+    toast(`🚨 THREAT DETECTED: ${message}`, 'error');
+    
+    // Add to log stream if you want
+    if (!S.isPaused) {
+      appendSep(`🚨 REAL-TIME THREAT: ${type} - ${message}`);
+    }
+  }
+}
+
+// Initialize monitor (optional - uncomment to enable)
+// const monitor = new ThreatMonitor();
+// monitor.start();
+
 </script>
+
+<!-- ═══ STATS / HISTORY DRAWER ═══════════════════════════════════════════════ -->
+<div class="drawer" id="drawer">
+  <div class="drawer-hdr">
+    <div class="drawer-title">System Intelligence</div>
+    <button class="mini-btn" onclick="closeDrawer()">✕ CLOSE</button>
+  </div>
+  <div class="drawer-tabs">
+    <div class="dtab active" data-dt="stats"   onclick="switchDrawerTab('stats')">Metrics</div>
+    <div class="dtab"        data-dt="history" onclick="switchDrawerTab('history')">History</div>
+  </div>
+  <div class="dtab-content show" id="dt-stats">
+    <div class="reduction-big">
+      <div class="reduction-pct" id="dr-pct">—%</div>
+      <div class="reduction-sub">ALERT FATIGUE REDUCTION</div>
+      <div class="reduction-bar-wrap">
+        <div class="reduction-bar">
+          <div class="reduction-bar-fill" id="dr-bar" style="width:0%"></div>
+        </div>
+        <div class="reduction-labels"><span id="dr-clean">0 clean</span><span id="dr-raw">0 raw</span></div>
+      </div>
+    </div>
+    <div id="dr-stats-body">
+      <div style="color:var(--text-muted);font-size:11px;text-align:center;padding:20px">Click refresh to load</div>
+    </div>
+  </div>
+  <div class="dtab-content" id="dt-history">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <button class="mini-btn" onclick="loadHistory()">↻ REFRESH</button>
+    </div>
+    <div id="dr-hist-body">
+      <div style="color:var(--text-muted);font-size:11px;text-align:center;padding:20px">Click refresh to load</div>
+    </div>
+  </div>
+</div>
+
+<!-- FAB -->
+<button class="fab" id="fab" onclick="toggleDrawer()" title="System Stats & History">◈</button>
+
 </body>
 </html>
