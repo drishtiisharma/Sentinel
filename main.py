@@ -67,6 +67,15 @@ def _store_analysis(total: int, noise: int, clean: int, root: str, conf: str, pa
 
 app = FastAPI(title="SENTINEL AIOps API", version="1.0.0")
 
+
+@app.get("/")
+def home():
+    return {
+        "system": "SENTINEL AIOps",
+        "status": "active",
+        "message": "Alert intelligence system running"
+    }
+
 # ── CORS ─────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
