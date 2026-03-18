@@ -71,12 +71,70 @@ app = FastAPI(title="SENTINEL AIOps API", version="1.0.0")
 # Mount current directory to serve static files
 app.mount("/static", StaticFiles(directory="."), name="static")
 
+# Print debug info at startup (this will show in Render logs)
+print("=" * 50)
+print("STARTUP DEBUG INFO:")
+print(f"Current working directory: {Path.cwd()}")
+print(f"Script directory: {Path(__file__).parent.absolute()}")
+print(f"Files in current directory: {os.listdir(Path.cwd())}")
+print(f"Files in script directory: {os.listdir(Path(__file__).parent.absolute())}")
+print("=" * 50)
+
 @app.get("/")
 async def serve_frontend():
-    index_path = Path(__file__).parent / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
-    return {"error": "index.html not found"}
+    try:
+        # Try multiple possible locations
+        possible_paths = [
+            Path.cwd() / "index.html",                          # Current working dir
+            Path(__file__).parent.absolute() / "index.html",    # Same dir as script
+            Path("/opt/render/project/src/index.html"),         # Common Render path
+            Path("/app/index.html"),                            # Another common path
+        ]
+        
+        for path in possible_paths:
+            print(f"Checking: {path}")
+            if path.exists():
+                print(f"✅ Found index.html at: {path}")
+                return FileResponse(path)
+        
+        # If we get here, no index.html found
+        error_info = {
+            "error": "index.html not found",
+            "cwd": str(Path.cwd()),
+            "cwd_contents": os.listdir(Path.cwd()),
+            "script_dir": str(Path(__file__).parent.absolute()),
+            "script_contents": os.listdir(Path(__file__).parent.absolute()),
+            "environment": dict(os.environ),
+            "python_path": sys.path
+        }
+        print(f"❌ Error: {error_info}")
+        return JSONResponse(status_code=404, content=error_info)
+        
+    except Exception as e:
+        # Catch any unexpected errors
+        error_details = {
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "type": str(type(e))
+        }
+        print(f"❌ Exception in serve_frontend: {error_details}")
+        return JSONResponse(status_code=500, content=error_details)
+
+# Add a simple health check endpoint
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "cwd": str(Path.cwd())}
+
+# Try to mount static files if they exist
+try:
+    static_dir = Path(__file__).parent.absolute() / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+        print(f"✅ Mounted static files from: {static_dir}")
+    else:
+        print(f"ℹ️ No static directory found at: {static_dir}")
+except Exception as e:
+    print(f"❌ Error mounting static files: {e}")
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
 app.add_middleware(
