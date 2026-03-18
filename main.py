@@ -67,10 +67,10 @@ def _store_analysis(total: int, noise: int, clean: int, root: str, conf: str, pa
 
 app = FastAPI(title="SENTINEL AIOps API", version="1.0.0")
 
-
 @app.get("/")
 def serve_frontend():
-    return FileResponse("index.html")
+    file_path = os.path.join(os.path.dirname(__file__), "index.html")
+    return FileResponse(file_path)
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
 app.add_middleware(
