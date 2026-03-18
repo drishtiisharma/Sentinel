@@ -3,6 +3,7 @@ SENTINEL AIOps Backend
 ======================
 FastAPI + Google Gemini for intelligent alert analysis with security threat detection.
 """
+from pathlib import Path
 from fastapi.staticfiles import StaticFiles
 import google.generativeai as genai
 import os
