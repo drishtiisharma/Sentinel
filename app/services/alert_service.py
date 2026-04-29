@@ -94,7 +94,7 @@ class AlertService:
                 severity = random.choice(["MEDIUM", "HIGH", "CRITICAL"])
             
             alert = {
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(),  
                 "service": service,
                 "alert_type": alert_type,
                 "message": message,
