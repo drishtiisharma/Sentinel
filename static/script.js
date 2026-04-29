@@ -95,7 +95,14 @@ function scheduleHealthCheck() {
 healthCheck();
 setInterval(healthCheck, 15000);
 
-function apiUrl() { return document.getElementById('api-url').value.trim(); }
+function apiUrl() { 
+    let url = document.getElementById('api-url').value.trim();
+    if (url === '') {
+        // Auto-detect: use current domain
+        return window.location.origin;
+    }
+    return url;
+}
 
 // ═══ QTY BUTTONS ════════════════════════════════════════════════════════════
 document.querySelectorAll('.qty-btn').forEach(b => {
