@@ -29,12 +29,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="."), name="static")
+# Get the correct static directory path
+static_dir = Path(__file__).resolve().parent.parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 @app.get("/")
 async def serve_frontend():
-    return FileResponse(Path.cwd() / "index.html")
+    # Look for index.html in the static folder
+    static_index = Path(__file__).resolve().parent.parent / "static" / "index.html"
+    if static_index.exists():
+        return FileResponse(static_index)
+    return JSONResponse(status_code=404, content={"error": "index.html not found"})
+
 
 # ============= SIMPLIFIED ENDPOINTS =============
 
