@@ -3,15 +3,15 @@ from typing import List
 import os
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "AIOps Sentinel"
+    PROJECT_NAME: str = "SENTINEL AIOps API"
     VERSION: str = "2.0.0"
     
     # Database
-    DATABASE_URL: str = "sqlite:///./aiops.db"
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./aiops.db")
     
     # Gemini API
-    GEMINI_API_KEY: str = ""
-    GEMINI_ENABLED: bool = False
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_ENABLED: bool = bool(os.getenv("GEMINI_API_KEY", ""))
     
     # ML Settings
     SIMILARITY_THRESHOLD: float = 0.75
@@ -26,11 +26,7 @@ class Settings(BaseSettings):
     # Security
     CORS_ORIGINS: List[str] = ["*"]
     
-    # Serving
-    SERVE_STATIC: bool = True
-    
     class Config:
         env_file = ".env"
-        case_sensitive = False
 
 settings = Settings()
