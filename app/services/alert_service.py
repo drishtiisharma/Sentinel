@@ -1,8 +1,6 @@
 from datetime import datetime
-from typing import List, Dict, Any
 import random
-import uuid
-
+from typing import List, Dict
 from app.database.connection import get_db
 from app.database.repository import AlertRepository
 from app.config import settings
@@ -10,7 +8,6 @@ from app.config import settings
 class AlertService:
     @staticmethod
     def generate_alert(alert_type: str, service: str, quantity: int = 1) -> List[Dict]:
-        """Generate realistic alerts with patterns and noise"""
         alerts = []
         
         alert_templates = {
@@ -56,10 +53,9 @@ class AlertService:
         for i in range(quantity):
             # Add some randomness for realistic patterns
             if settings.REALISTIC_NOISE and random.random() < settings.PATTERN_REPEAT_PROBABILITY:
-                # Repeat previous alert pattern
                 if alerts:
                     new_alert = alerts[-1].copy()
-                    new_alert["timestamp"] = datetime.now()  
+                    new_alert["timestamp"] = datetime.now()
                     alerts.append(new_alert)
                     continue
             
@@ -95,11 +91,14 @@ class AlertService:
                 severity = random.choice(["MEDIUM", "HIGH", "CRITICAL"])
             
             alert = {
-                "timestamp": datetime.now(),  
+                "timestamp": datetime.now(),
                 "service": service,
                 "alert_type": alert_type,
                 "message": message,
                 "severity": severity,
+                "is_noise": False,  # Initially not considered noise
+                "cluster_id": None,
+                "similarity_score": None,
                 "raw_data": {
                     "generated_at": datetime.now().isoformat(),
                     "pattern": alert_type
@@ -107,12 +106,18 @@ class AlertService:
             }
             alerts.append(alert)
         
-        # Save to database
-        with get_db() as db:
-            for alert in alerts:
-                # Make a copy for database (don't modify the original)
-                db_alert = alert.copy()
-                AlertRepository.create(db, db_alert)
+        # ========== SAVE TO DATABASE ==========
+        try:
+            with get_db() as db:
+                for alert in alerts:
+                    AlertRepository.create(db, alert)
+            print(f"Saved {len(alerts)} alerts to database")
+        except Exception as e:
+            print(f"Error saving alerts to database: {e}")
+            import traceback
+            traceback.print_exc()
+        # ======================================
+        
         return alerts
     
     @staticmethod
@@ -155,12 +160,31 @@ class AlertService:
         alerts = []
         
         for alert_template in incident["alerts"]:
-            alert = AlertService.generate_alert(
-                alert_template["type"],
-                alert_template["service"],
-                1
-            )[0]
+            alert = {
+                "timestamp": datetime.now(),
+                "service": alert_template["service"],
+                "alert_type": alert_template["type"],
+                "message": f"Incident: {incident['name']} - {alert_template['type']} detected",
+                "severity": alert_template["severity"],
+                "is_noise": False,
+                "cluster_id": None,
+                "similarity_score": None,
+                "raw_data": {
+                    "generated_at": datetime.now().isoformat(),
+                    "pattern": alert_template["type"],
+                    "incident": incident["name"]
+                }
+            }
             alerts.append(alert)
+        
+        # Save to database
+        try:
+            with get_db() as db:
+                for alert in alerts:
+                    AlertRepository.create(db, alert)
+            print(f"Saved {len(alerts)} incident alerts to database")
+        except Exception as e:
+            print(f"Error saving incident alerts: {e}")
         
         return {
             "alerts": alerts,
@@ -168,23 +192,6 @@ class AlertService:
             "count": len(alerts),
             "incident_type": incident["name"]
         }
-    
-    @staticmethod
-    def get_all_alerts() -> List[Dict]:
-        with get_db() as db:
-            alerts = AlertRepository.get_all(db)
-            return [
-                {
-                    "id": a.id,
-                    "timestamp": a.timestamp.isoformat() if a.timestamp else None,
-                    "service": a.service,
-                    "type": a.alert_type,
-                    "message": a.message,
-                    "severity": a.severity,
-                    "is_noise": a.is_noise
-                }
-                for a in alerts
-            ]
     
     @staticmethod
     def clear_all_alerts() -> int:

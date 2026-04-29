@@ -1,3 +1,4 @@
+from collections import defaultdict
 import os
 import sys
 from pathlib import Path
@@ -151,7 +152,19 @@ async def analyze_alerts(request: AnalyzeRequest):
         medium_count = severity_count.get("MEDIUM", 0)
         
         # Calculate reduction percent (mock for now, based on noise detection)
-        estimated_noise = medium_count // 2 if medium_count > 0 else 0
+        # Count duplicates (same type and service)
+        from collections import defaultdict
+        pattern_count = defaultdict(int)
+        pattern_list = []
+        for alert in alerts:
+            pattern = f"{alert.get('alert_type', '')}_{alert.get('service', '')}"
+            pattern_count[pattern] += 1
+            pattern_list.append(pattern)
+
+        # Duplicates are occurrences beyond the first of each pattern
+        duplicate_count = sum(max(0, count - 1) for count in pattern_count.values())
+        estimated_noise = duplicate_count
+        reduction_percent = int((duplicate_count / total_alerts) * 100) if total_alerts > 0 else 0
         reduction_percent = int((estimated_noise / total_alerts) * 100) if total_alerts > 0 else 0
         
         # Build priority ranking
