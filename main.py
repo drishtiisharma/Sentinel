@@ -1,4 +1,4 @@
-from app.main import create_app
+from app.main import app
 
 # Create the FastAPI application
 app = create_app()
