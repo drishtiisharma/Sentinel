@@ -95,13 +95,15 @@ function scheduleHealthCheck() {
 healthCheck();
 setInterval(healthCheck, 15000);
 
+
 function apiUrl() { 
-    let url = document.getElementById('api-url').value.trim();
-    if (url === '') {
-        // Auto-detect: use current domain
-        return window.location.origin;
+    // First check if user manually set a URL
+    let manualUrl = document.getElementById('api-url').value.trim();
+    if (manualUrl !== '') {
+        return manualUrl;
     }
-    return url;
+    // Otherwise auto-detect from current page
+    return window.location.origin;
 }
 
 // ═══ QTY BUTTONS ════════════════════════════════════════════════════════════
