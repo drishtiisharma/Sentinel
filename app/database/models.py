@@ -1,8 +1,6 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, JSON, Boolean, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, JSON, Boolean, Index
 from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
 from app.database.connection import Base
-import json
 
 class Alert(Base):
     __tablename__ = "alerts"

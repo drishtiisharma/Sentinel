@@ -151,11 +151,10 @@ async def analyze_alerts(request: AnalyzeRequest):
         medium_count = severity_count.get("MEDIUM", 0)
         
         # Calculate reduction percent (mock for now, based on noise detection)
-        # In real implementation, this would come from ML noise reduction
         estimated_noise = medium_count // 2 if medium_count > 0 else 0
         reduction_percent = int((estimated_noise / total_alerts) * 100) if total_alerts > 0 else 0
         
-        # Build priority ranking (properly formatted)
+        # Build priority ranking
         severity_weight = {"CRITICAL": 100, "HIGH": 70, "MEDIUM": 40, "LOW": 10}
         priority_ranking = []
         
@@ -184,7 +183,7 @@ async def analyze_alerts(request: AnalyzeRequest):
                 "score": severity_weight.get(alert.get("severity", "MEDIUM"), 40)
             })
         
-        # Build clusters (group similar alerts by type)
+        # Build clusters
         clusters = []
         cluster_map = {}
         for alert in alerts:
@@ -229,7 +228,6 @@ async def analyze_alerts(request: AnalyzeRequest):
                 "urgency": "MONITOR"
             })
         
-        # Add general recommendation
         if total_alerts > 10:
             recommendations.append({
                 "action": "🔧 Enable Noise Reduction",
@@ -237,11 +235,10 @@ async def analyze_alerts(request: AnalyzeRequest):
                 "urgency": "MONITOR"
             })
         
-        # Determine root cause (most affected service with critical/high alerts)
+        # Determine root cause
         root_cause_service = "unknown"
         root_cause_confidence = "LOW"
         
-        # Find service with most critical/high alerts
         service_critical_count = {}
         for alert in alerts:
             service = alert.get("service", "unknown")
@@ -263,7 +260,7 @@ async def analyze_alerts(request: AnalyzeRequest):
             "affected": list(service_counts.keys())
         }
         
-        # Generate cascade chain (sequence of services affected)
+        # Generate cascade chain
         ordered_alerts = sorted(alerts, key=lambda x: x.get("timestamp", ""))
         cascade_chain = []
         seen = set()
@@ -277,7 +274,6 @@ async def analyze_alerts(request: AnalyzeRequest):
         
         # Security threats detection
         security_threats = []
-        # Check for authentication failures
         auth_failures = [a for a in alerts if "auth" in a.get("alert_type", "").lower() or "authentication" in a.get("message", "").lower()]
         if len(auth_failures) >= 3:
             security_threats.append({
@@ -293,7 +289,6 @@ async def analyze_alerts(request: AnalyzeRequest):
                 "time_pattern": "Multiple occurrences in short time window"
             })
         
-        # Check for database failures
         db_failures = [a for a in alerts if "database" in a.get("service", "").lower() or "database" in a.get("alert_type", "").lower()]
         if len(db_failures) >= 2:
             security_threats.append({
@@ -345,6 +340,54 @@ async def analyze_alerts(request: AnalyzeRequest):
             pred_message = "System appears stable - continue normal operations"
             pred_eta = "24h"
 
+        # ============================================================
+        # >>> ADD THE HISTORY SAVING TRY BLOCK RIGHT HERE <<<
+        # ============================================================
+        
+        # Save analysis to history
+        try:
+            from app.database.repository import AnalysisRepository
+            from app.database.connection import get_db
+            
+            with get_db() as db:
+                analysis_record = {
+                    "total_alerts": total_alerts,
+                    "filtered_alerts": total_alerts - estimated_noise,
+                    "noise_removed": estimated_noise,
+                    "reduction_percent": reduction_percent,
+                    "ai_summary": ai_summary,
+                    "root_cause": root_cause,
+                    "future_prediction": {
+                        "prediction": prediction,
+                        "confidence": pred_confidence,
+                        "message": pred_message,
+                        "eta": pred_eta,
+                        "risk_factors": {
+                            "critical_alerts": critical_count,
+                            "high_alerts": high_count,
+                            "affected_services": len(service_counts)
+                        }
+                    },
+                    "recommendations": recommendations,
+                    "security_threats": security_threats,
+                    "cascade_chain": cascade_chain,
+                    "clusters": clusters,
+                    "severity_distribution": severity_count,
+                    "type_counts": type_counts,
+                    "service_counts": service_counts,
+                    "raw_analysis": {}
+                }
+                AnalysisRepository.create(db, analysis_record)
+                print(f"Analysis saved to history with ID")
+        except Exception as e:
+            print(f"Failed to save analysis to history: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        # ============================================================
+        # >>> THEN THE RETURN STATEMENT <<<
+        # ============================================================
+        
         return {
             "total_alerts": total_alerts,
             "filtered_alerts": total_alerts - estimated_noise,
@@ -402,8 +445,25 @@ async def get_stats():
 async def get_history(limit: int = 20):
     """Get analysis history"""
     try:
-        # For now, return empty list since full history tracking needs more work
-        return {"analyses": []}
+        from app.database.repository import AnalysisRepository
+        with get_db() as db:
+            analyses = AnalysisRepository.get_all(db, limit)
+            return {
+                "analyses": [
+                    {
+                        "id": a.id,
+                        "timestamp": a.timestamp.isoformat(),
+                        "total_alerts": a.total_alerts,
+                        "filtered_alerts": a.filtered_alerts,
+                        "noise_removed": a.noise_removed,
+                        "reduction_percent": a.reduction_percent,
+                        "root_cause": a.root_cause.get("service", "unknown") if a.root_cause else "unknown",
+                        "confidence": a.root_cause.get("confidence", "LOW") if a.root_cause else "LOW",
+                        "ai_summary": a.ai_summary[:100] if a.ai_summary else ""
+                    }
+                    for a in analyses
+                ]
+            }
     except Exception as e:
         print(f"History error: {e}")
         return {"analyses": []}
@@ -412,22 +472,31 @@ async def get_history(limit: int = 20):
 async def get_analysis(analysis_id: int):
     """Get specific analysis by ID"""
     try:
-        # For now, return mock data
-        return {
-            "id": analysis_id,
-            "timestamp": datetime.now().isoformat(),
-            "total_alerts": 0,
-            "filtered_alerts": 0,
-            "noise_removed": 0,
-            "reduction_percent": 0,
-            "ai_summary": f"Analysis #{analysis_id} - Historical data not available",
-            "root_cause": {"service": "unknown", "confidence": "LOW", "affected": []},
-            "future_prediction": {},
-            "security_threats": [],
-            "cascade_chain": [],
-            "severity_distribution": {},
-            "type_counts": {}
-        }
+        from app.database.repository import AnalysisRepository
+        with get_db() as db:
+            analysis = AnalysisRepository.get_by_id(db, analysis_id)
+            if not analysis:
+                raise HTTPException(status_code=404, detail="Analysis not found")
+            
+            return {
+                "id": analysis.id,
+                "timestamp": analysis.timestamp.isoformat(),
+                "total_alerts": analysis.total_alerts,
+                "filtered_alerts": analysis.filtered_alerts,
+                "noise_removed": analysis.noise_removed,
+                "reduction_percent": analysis.reduction_percent,
+                "ai_summary": analysis.ai_summary,
+                "root_cause": analysis.root_cause,
+                "future_prediction": analysis.future_prediction,
+                "security_threats": analysis.security_threats,
+                "cascade_chain": analysis.cascade_chain,
+                "clusters": analysis.clusters,
+                "recommendations": analysis.recommendations,
+                "severity_distribution": analysis.severity_distribution,
+                "type_counts": analysis.type_counts
+            }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Get analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

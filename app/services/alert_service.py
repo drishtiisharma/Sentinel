@@ -110,8 +110,9 @@ class AlertService:
         # Save to database
         with get_db() as db:
             for alert in alerts:
-                AlertRepository.create(db, alert)
-        
+                # Make a copy for database (don't modify the original)
+                db_alert = alert.copy()
+                AlertRepository.create(db, db_alert)
         return alerts
     
     @staticmethod
