@@ -90,13 +90,20 @@ class AlertService:
             if settings.REALISTIC_NOISE and random.random() < 0.2:
                 severity = random.choice(["MEDIUM", "HIGH", "CRITICAL"])
             
+            # Mark as noise if same (alert_type + service) already appeared in this batch
+            pattern = f"{alert_type}_{service}"
+            is_noise = any(
+                f"{a.get('alert_type', '')}_{a.get('service', '')}" == pattern
+                for a in alerts
+            )
+
             alert = {
                 "timestamp": datetime.now(),
                 "service": service,
                 "alert_type": alert_type,
                 "message": message,
                 "severity": severity,
-                "is_noise": False,  # Initially not considered noise
+                "is_noise": is_noise,
                 "cluster_id": None,
                 "similarity_score": None,
                 "raw_data": {

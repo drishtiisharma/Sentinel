@@ -136,35 +136,34 @@ async def analyze_alerts(request: AnalyzeRequest):
         severity_count = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
         type_counts = {}
         service_counts = {}
-        
+
         for alert in alerts:
             severity = alert.get("severity", "MEDIUM")
             severity_count[severity] = severity_count.get(severity, 0) + 1
-            
+
             alert_type = alert.get("alert_type", "unknown")
             type_counts[alert_type] = type_counts.get(alert_type, 0) + 1
-            
+
             service = alert.get("service", "unknown")
             service_counts[service] = service_counts.get(service, 0) + 1
-        
+
         critical_count = severity_count.get("CRITICAL", 0)
         high_count = severity_count.get("HIGH", 0)
         medium_count = severity_count.get("MEDIUM", 0)
-        
-        # Calculate reduction percent (mock for now, based on noise detection)
-        # Count duplicates (same type and service)
+
+        # Mark duplicates (same alert_type + service) as noise and count them
         from collections import defaultdict
-        pattern_count = defaultdict(int)
-        pattern_list = []
+        seen_patterns = set()
+        estimated_noise = 0
         for alert in alerts:
             pattern = f"{alert.get('alert_type', '')}_{alert.get('service', '')}"
-            pattern_count[pattern] += 1
-            pattern_list.append(pattern)
+            if pattern in seen_patterns:
+                alert["is_noise"] = True
+                estimated_noise += 1
+            else:
+                alert["is_noise"] = False
+                seen_patterns.add(pattern)
 
-        # Duplicates are occurrences beyond the first of each pattern
-        duplicate_count = sum(max(0, count - 1) for count in pattern_count.values())
-        estimated_noise = duplicate_count
-        reduction_percent = int((duplicate_count / total_alerts) * 100) if total_alerts > 0 else 0
         reduction_percent = int((estimated_noise / total_alerts) * 100) if total_alerts > 0 else 0
         
         # Build priority ranking
