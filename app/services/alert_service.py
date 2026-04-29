@@ -58,8 +58,9 @@ class AlertService:
             if settings.REALISTIC_NOISE and random.random() < settings.PATTERN_REPEAT_PROBABILITY:
                 # Repeat previous alert pattern
                 if alerts:
-                    alerts.append(alerts[-1].copy())
-                    alerts[-1]["timestamp"] = datetime.now().isoformat()
+                    new_alert = alerts[-1].copy()
+                    new_alert["timestamp"] = datetime.now()  
+                    alerts.append(new_alert)
                     continue
             
             # Generate message based on template
@@ -174,7 +175,7 @@ class AlertService:
             return [
                 {
                     "id": a.id,
-                    "timestamp": a.timestamp.isoformat(),
+                    "timestamp": a.timestamp.isoformat() if a.timestamp else None,
                     "service": a.service,
                     "type": a.alert_type,
                     "message": a.message,
