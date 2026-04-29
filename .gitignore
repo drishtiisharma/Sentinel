@@ -1,0 +1,26 @@
+# Database files (important!)
+*.db
+*.sqlite
+*.sqlite3
+/data/
+
+# Environment variables (critical!)
+.env
+.env.local
+.env.*.local
+
+# Logs (can get large)
+logs/
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
