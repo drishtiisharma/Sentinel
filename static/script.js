@@ -1071,6 +1071,13 @@ function toggleIntelPanel() {
   btn.classList.toggle('collapsed');
 }
 
+function toggleAlertPanel() {
+  const layout = document.getElementById('main-layout');
+  const btn    = document.getElementById('center-toggle');
+  layout.classList.toggle('intel-collapsed');
+  btn.classList.toggle('collapsed');
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   const qtyBtn = document.querySelector('.qty-btn[data-v="1"]');
   if (qtyBtn) qtyBtn.classList.add('active');
