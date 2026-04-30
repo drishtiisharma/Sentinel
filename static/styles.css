@@ -1,5 +1,4 @@
-
-  :root {
+:root {
     --bg: #080c0f;
     --surface: #0d1318;
     --surface2: #121a20;
@@ -221,6 +220,9 @@
   /* ═══ CENTER PANEL TOGGLE ═══════════════════════════════════════════════════ */
   .log-panel {
     position: relative;
+    overflow: hidden;
+    transition: min-width 0.3s ease;
+    min-width: 0;
   }
   .center-toggle {
     position: absolute;
@@ -272,6 +274,56 @@
   .sidebar-toggle.collapsed .toggle-arrow {
     transform: rotate(180deg);
   }
+
+  /* ═══ LOG PANEL TOGGLE ══════════════════════════════════════════════════════ */
+  .log-toggle {
+    position: absolute;
+    top: 50%;
+    left: -9px;
+    transform: translateY(-50%);
+    z-index: 300;
+    width: 18px;
+    height: 48px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-right: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    transition: background 0.15s, color 0.15s;
+    border-radius: 4px 0 0 4px;
+    user-select: none;
+  }
+  .log-toggle:hover {
+    background: var(--border2);
+    color: var(--green);
+  }
+  .log-toggle .toggle-arrow {
+    transition: transform 0.3s ease;
+    display: inline-block;
+    line-height: 1;
+  }
+  .log-toggle.collapsed .toggle-arrow {
+    transform: rotate(180deg);
+  }
+
+  /* Hide log panel */
+  .layout.log-collapsed {
+    grid-template-columns: 280px 0px 1fr;
+  }
+  .layout.sidebar-collapsed.log-collapsed {
+    grid-template-columns: 0px 0px 1fr;
+  }
+  .layout.log-collapsed.intel-collapsed {
+    grid-template-columns: 280px 0px 0px;
+  }
+  .layout.sidebar-collapsed.log-collapsed.intel-collapsed {
+    grid-template-columns: 0px 0px 0px;
+  }
+
 
   .sidebar-section { border-bottom: 1px solid var(--border); padding: 14px 16px; }
 
@@ -743,5 +795,3 @@
 
   filter: drop-shadow(0 0 6px #00ff9c);
 }
-
-
