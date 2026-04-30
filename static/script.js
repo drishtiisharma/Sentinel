@@ -1073,9 +1073,11 @@ function toggleIntelPanel() {
 
 function toggleAlertPanel() {
   const layout = document.getElementById('main-layout');
-  const btn    = document.getElementById('center-toggle');
-  layout.classList.toggle('intel-collapsed');
-  btn.classList.toggle('collapsed');
+  const btn = document.getElementById('log-toggle');  // Use log-toggle button
+  layout.classList.toggle('log-collapsed');  // Toggle log-collapsed class
+  if (btn) {
+    btn.classList.toggle('collapsed');
+  }
 }
 
 document.addEventListener('DOMContentLoaded', function() {
