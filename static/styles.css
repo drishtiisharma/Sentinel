@@ -279,14 +279,14 @@
   .log-toggle {
     position: absolute;
     top: 50%;
-    left: -9px;
+    right: -9px;
     transform: translateY(-50%);
     z-index: 300;
     width: 18px;
     height: 48px;
     background: var(--surface2);
     border: 1px solid var(--border2);
-    border-right: none;
+    border-left: none;
     color: var(--text-dim);
     cursor: pointer;
     display: flex;
@@ -294,7 +294,7 @@
     justify-content: center;
     font-size: 10px;
     transition: background 0.15s, color 0.15s;
-    border-radius: 4px 0 0 4px;
+    border-radius: 0 4px 4px 0;
     user-select: none;
   }
   .log-toggle:hover {
